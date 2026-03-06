@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from './prisma.module';
-import { VehiclesModule } from './vehicles/vehicles.module';
+
+import { PackageModule } from './admin/package/package.module';
 
 @Module({
   imports: [
@@ -10,7 +11,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
       envFilePath: '.env',
     }),
     PrismaModule,
-    VehiclesModule,
+    PackageModule,
   ],
   controllers: [],
   providers: [],

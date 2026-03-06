@@ -6,59 +6,40 @@ datasource db {
   provider = "postgresql"
 }
 
-/*
-|--------------------------------------------------------------------------
-| ENUMS
-|--------------------------------------------------------------------------
-*/
-
-enum Country {
-  BOLIVIA
-  PERU
-  ARGENTINA
-  CHILE
-  BRASIL
-}
-
-/*
-|--------------------------------------------------------------------------
-| MODELS
-|--------------------------------------------------------------------------
-*/
-
 model User {
-  id          String    @id @default(uuid())
-  email       String    @unique @db.VarChar(150)
-  password    String?   @db.VarChar(255)
-  firstName   String    @db.VarChar(100)
-  lastName    String    @db.VarChar(100)
-  phoneNumber String?   @db.VarChar(20)
-  country     Country   @default(BOLIVIA)
+  id                  String    @id @default(uuid())
+  phoneNumber         String    @unique
+  email               String?   @unique
+  password            String?
+  firstName           String?
+  lastName            String?
+  isActive            Boolean   @default(true)
+  isProfileComplete   Boolean   @default(false)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  lastLogin           DateTime?
+  role                UserRole  @default(USER)
+  resetPasswordExpiry DateTime?
+  resetPasswordToken  String?
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  // Relaciones
-  vehicles    Vehicle[]
-
-  @@index([email])
   @@map("users")
 }
 
-model Vehicle {
-  id        String   @id @default(uuid())
-  plate     String   @unique @db.VarChar(15)
-  brand     String   @db.VarChar(100)
-  model     String   @db.VarChar(100)
-  year      Int
+model Package {
+  id      String  @id @default(uuid())
+  name    String  @db.VarChar(100)
+  credits Int
+  price   Decimal @db.Decimal(10, 2)
 
-  ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([plate])
-  @@index([ownerId])
-  @@map("vehicles")
+  @@map("packages") // Nombre de la tabla en la base de datos
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  ANFITRIONA
 }

@@ -1,22 +1,12 @@
-import {
-  IsEmail,
-  IsString,
-  IsEnum,
-  MinLength,
-  IsOptional,
-  Matches,
-  IsBoolean,
-} from 'class-validator';
-
-// Asegúrate de que este Enum coincida con tu schema.prisma
-export enum Country {
-  BOLIVIA = 'BOLIVIA',
-  PERU = 'PERU',
-}
+import { IsBoolean, IsEmail, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateUserDto {
+  @IsString()
+  phoneNumber: string;
+
   @IsEmail()
-  email: string;
+  @IsOptional()
+  email?: string;
 
   @IsString()
   @MinLength(6)
@@ -24,43 +14,14 @@ export class CreateUserDto {
   password?: string;
 
   @IsString()
-  firstName: string;
+  @IsOptional()
+  firstName?: string;
 
   @IsString()
-  lastName: string;
-
-  @IsEnum(Country)
-  country: Country;
-
   @IsOptional()
-  @IsString()
-  phoneNumber?: string;
+  lastName?: string;
 
-  @IsOptional()
-  @IsString()
-  @Matches(/^0x[a-fA-F0-9]{40}$/, {
-    message:
-      'La dirección de la billetera no es válida (debe ser formato Ethereum)',
-  })
-  walletAddress?: string;
-
-  @IsOptional()
-  @IsString()
-  resetPasswordToken?: string;
-
-  @IsOptional()
-  @IsString()
-  resetPasswordExpiry?: Date;
-
-  @IsOptional()
   @IsBoolean()
-  isGoogleAccount?: boolean;
-
   @IsOptional()
-  @IsBoolean()
-  isOnboardingCompleted?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  isVerified?: boolean;
+  isProfileComplete?: boolean;
 }

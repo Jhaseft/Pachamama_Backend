@@ -5,98 +5,52 @@ import {
   UnauthorizedException,
   HttpCode,
   HttpStatus,
-  Get,
-  UseGuards,
-  Req,
-  Res,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { CreateUserDto } from '../users/dto/create-user.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
-import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { VerifySignupDto } from './dto/verify-signup.dto';
-import { AuthGuard } from '@nestjs/passport';
-import type { Response } from 'express';
+import { SendOtpDto } from './dto/send-otp.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { CompleteRegistrationDto } from './dto/complete-registration.dto';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService,
-  ) { }
+  constructor(private readonly authService: AuthService) {}
 
-  // 1. REGISTRO (Sign Up)
-  // Ruta: POST /auth/signup
-  @Post('signup')
-  async signup(@Body() createUserDto: CreateUserDto) {
-    // Llama al servicio que hashea la password y guarda en la BD
+  // ─── FLUJO OTP ────────────────────────────────────────────────────────────
 
-    return this.authService.register(createUserDto);
+  // Pantalla 6: Ingresar número de celular → enviar OTP
+  @Post('send-otp')
+  async sendOtp(@Body() dto: SendOtpDto) {
+    return this.authService.sendOtp(dto.phoneNumber);
   }
 
-  // VERIFICAR CÓDIGO DE SIGNUP
-  @Post('verify-signup')
+  // Pantalla 7: Verificar código OTP
+  // Respuesta A: { access_token, user }           → usuario existente (login)
+  // Respuesta B: { needsProfile: true, tempToken } → usuario nuevo (ir a completar perfil)
+  @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
-  async verifySignup(@Body() verifySignupDto: VerifySignupDto) {
-    return this.authService.verifySignup(verifySignupDto.email, verifySignupDto.code);
+  async verifyOtp(@Body() dto: VerifyOtpDto) {
+    return this.authService.verifyOtp(dto.phoneNumber, dto.code);
   }
 
-  // REENVIAR CÓDIGO DE VERIFICACIÓN
-  @Post('resend-code')
-  @HttpCode(HttpStatus.OK)
-  async resendCode(@Body() body: ForgotPasswordDto) {
-    return this.authService.resendSignupCode(body.email);
+  // Pantalla 8: Completar perfil (solo usuarios nuevos)
+  @Post('complete-registration')
+  async completeRegistration(@Body() dto: CompleteRegistrationDto) {
+    return this.authService.completeRegistration(dto);
   }
 
-  // 2. INICIO DE SESIÓN (Login)
-  // Ruta: POST /auth/login
+  // ─── LOGIN EMAIL/PASSWORD (secundario) ───────────────────────────────────
+
   @Post('login')
-  @HttpCode(HttpStatus.OK) // Cambiamos el código por defecto (201) a 200 OK
+  @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto) {
-    // A. Validar que el usuario existe y la contraseña es correcta
     const user = await this.authService.validateUser(
       loginDto.email,
       loginDto.password,
     );
-
     if (!user) {
-      throw new UnauthorizedException(
-        'Credenciales inválidas (Email o contraseña incorrectos)',
-      );
+      throw new UnauthorizedException('Email o contraseña incorrectos');
     }
-
-    // B. Si todo está bien, generamos y devolvemos el Token JWT
     return this.authService.login(user);
-  }
-
-  // 3. OLVIDÉ MI CONTRASEÑA
-  @Post('forgot-password')
-  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
-    return this.authService.forgotPassword(forgotPasswordDto.email);
-  }
-
-  @Post('reset-password')
-  async resetPassword(@Body() body: ResetPasswordDto) {
-    await this.authService.resetPassword(body.token, body.newPassword);
-  }
-
-  @Get('google')
-  @UseGuards(AuthGuard('google'))
-  async googleAuth(@Req() req) { }
-
-  // 2. Google devuelve al usuario aquí
-  @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
-  async googleAuthRedirect(@Req() req, @Res() res: Response) {
-    // req.user viene con el perfil de Google, necesitamos buscar/crear en BD
-    const user = await this.authService.validateUserByGoogle(req.user);
-    const data = await this.authService.googleLogin(user);
-    const isCompleted = data.user.isOnboardingCompleted;
-    if (isCompleted) {
-      // Usuario antiguo -> Al Dashboard directo
-      res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${data.access_token}&dest=/dashboard`);
-    } else {
-      // Usuario nuevo -> A completar perfil
-      res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${data.access_token}&dest=/complete-profile`);
-    }
   }
 }

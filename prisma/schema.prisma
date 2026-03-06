@@ -7,22 +7,24 @@ datasource db {
 }
 
 model User {
-  id                      String                  @id @default(uuid())
-  email                   String                  @unique
-  password                String?
-  firstName               String
-  lastName                String
-  phoneNumber             String?
-  createdAt               DateTime                @default(now())
-  updatedAt               DateTime                @updatedAt
-  lastLogin               DateTime?
-  role                    UserRole                @default(USER)
-  resetPasswordExpiry     DateTime?
-  resetPasswordToken      String?
-  bankAccounts            BankAccount[]
-  kycDocuments            KycDocument[]
-  kycRequests             KycRequest[]            @relation("KycRequestUser")
-  kycReviewedRequests     KycRequest[]            @relation("KycRequestReviewedBy")
+  id                  String        @id @default(uuid())
+  phoneNumber         String        @unique
+  email               String?       @unique
+  password            String?
+  firstName           String?
+  lastName            String?
+  isProfileComplete   Boolean       @default(false)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  lastLogin           DateTime?
+  role                UserRole      @default(USER)
+  resetPasswordExpiry DateTime?
+  resetPasswordToken  String?
+  bankAccounts        BankAccount[]
+  kycDocuments        KycDocument[]
+  kycRequests         KycRequest[]  @relation("KycRequestUser")
+  kycReviewedRequests KycRequest[]  @relation("KycRequestReviewedBy")
+
   @@map("users")
 }
 
@@ -216,6 +218,13 @@ enum Network {
 enum country_banks {
   Bolivia
   PERU
+}
+
+enum KycStatus {
+  UNVERIFIED
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum VerificationStatus {

@@ -1,221 +1,143 @@
-import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { Country, CreateUserDto } from '../users/dto/create-user.dto';
-import { v4 as uuidv4 } from 'uuid';
 import { UserEntity } from '../users/entities/user.entity';
-import { ConfigService } from '@nestjs/config';
-import { MailService } from 'src/mail/mail.service';
-import { randomInt } from 'crypto';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
+import { randomInt } from 'crypto';
+import type { User } from '@prisma/client';
+import { CompleteRegistrationDto } from './dto/complete-registration.dto';
+import { WhatsappService } from '../whatsapp/whatsapp.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
-    private configService: ConfigService,
-    private mailService: MailService,
-    @Inject(CACHE_MANAGER) private cacheManager: Cache  ,
-  ) { }
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    private whatsappService: WhatsappService,
+  ) {}
 
-  async register(createUserDto: CreateUserDto) {
-    if (!createUserDto.password) {
-      throw new BadRequestException('La contraseña es requerida para el registro');
+  // ─── OTP FLOW ─────────────────────────────────────────────────────────────
+
+  async sendOtp(phoneNumber: string) {
+    const code = randomInt(0, 1000000).toString().padStart(6, '0');
+    await this.cacheManager.set(`otp_${phoneNumber}`, code, 300000); // 5 min
+
+    await this.whatsappService.sendText(
+      phoneNumber,
+      `Tu código de verificación de Pachamama es: *${code}*\nExpira en 5 minutos.`,
+    );
+
+    return { message: 'Código OTP enviado por WhatsApp. Expira en 5 minutos.' };
+  }
+
+  async verifyOtp(phoneNumber: string, code: string) {
+    const cached = await this.cacheManager.get<string>(`otp_${phoneNumber}`);
+
+    if (!cached || cached !== code) {
+      throw new BadRequestException('Código OTP inválido o expirado');
     }
 
-    // Verificar que el email no exista ya en BD
-    const existingUser = await this.usersService.findOneByEmail(createUserDto.email);
-    if (existingUser) {
-      throw new ConflictException('El correo electrónico ya está registrado');
+    await this.cacheManager.del(`otp_${phoneNumber}`);
+
+    const user = await this.usersService.findOneByPhone(phoneNumber);
+
+    if (user) {
+      // Usuario existente → retornar JWT
+      const { password: _, ...userWithoutPass } = user;
+      return this.generateTokenResponse(userWithoutPass);
     }
 
-    // Hashear la contraseña
-    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
+    // Usuario nuevo → retornar token temporal para completar el registro
+    const tempToken = this.jwtService.sign(
+      { sub: phoneNumber, type: 'phone_verified' },
+      { expiresIn: '10m' },
+    );
 
-    // Guardar datos del usuario en cache (no en BD)
-    const userData = {
-      ...createUserDto,
+    return { needsProfile: true, tempToken };
+  }
+
+  async completeRegistration(dto: CompleteRegistrationDto) {
+    // Validar token temporal
+    let payload: { sub: string; type: string };
+    try {
+      payload = this.jwtService.verify(dto.tempToken);
+    } catch {
+      throw new BadRequestException('Token inválido o expirado');
+    }
+
+    if (payload.type !== 'phone_verified') {
+      throw new BadRequestException('Token inválido');
+    }
+
+    if (dto.password !== dto.confirmPassword) {
+      throw new BadRequestException('Las contraseñas no coinciden');
+    }
+
+    if (dto.email) {
+      const existing = await this.usersService.findOneByEmail(dto.email);
+      if (existing) {
+        throw new ConflictException('El email ya está registrado');
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    const newUser = await this.usersService.create({
+      phoneNumber: payload.sub,
+      email: dto.email,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
       password: hashedPassword,
-      isOnboardingCompleted: true,
-    };
-    await this.cacheManager.set(`signup_${createUserDto.email}`, userData, 300000);
+      isProfileComplete: true,
+    });
 
-    // Enviar código de verificación al email
-    await this.sendVerificationCode(createUserDto.email);
-
-    return { message: 'Código de verificación enviado al correo electrónico' };
+    const { password: _, ...userWithoutPass } = newUser;
+    return this.generateTokenResponse(userWithoutPass);
   }
 
-  async verifySignup(email: string, code: string) {
-    // Verificar el código OTP
-    const result = await this.verifyCode(email, code);
-    if (!result.verified) {
-      throw new BadRequestException('Código de verificación inválido o expirado');
-    }
-
-    // Recuperar datos del usuario desde cache
-    const userData = await this.cacheManager.get<CreateUserDto>(`signup_${email}`);
-    if (!userData) {
-      throw new BadRequestException('Datos de registro expirados. Por favor, regístrate nuevamente.');
-    }
-
-    // Crear el usuario en BD
-    const newUser = await this.usersService.create(userData);
-
-    // Limpiar cache de signup
-    await this.cacheManager.del(`signup_${email}`);
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password: _, ...userWithoutPassword } = newUser;
-    return this.login(userWithoutPassword);
-  }
-
-  async resendSignupCode(email: string) {
-    // Verificar que existan datos de registro pendientes
-    const userData = await this.cacheManager.get(`signup_${email}`);
-    if (!userData) {
-      throw new BadRequestException('No hay un registro pendiente para este correo');
-    }
-
-    // Reenviar código
-    return this.sendVerificationCode(email);
-  }
+  // ─── EMAIL/PASSWORD LOGIN (secundario) ────────────────────────────────────
 
   async validateUser(
     email: string,
     pass: string,
-  ): Promise<Omit<UserEntity, 'password'> | null> {
+  ): Promise<Omit<User, 'password'> | null> {
     const user = await this.usersService.findOneByEmail(email);
-    // Si el usuario no tiene password (cuenta de Google), no puede hacer login con email/password
     if (user && user.password && (await bcrypt.compare(pass, user.password))) {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password: _, ...result } = user;
       return result;
     }
     return null;
   }
 
-  login(user: Omit<UserEntity, 'password'>) {
+  login(user: Omit<User, 'password'>) {
+    return this.generateTokenResponse(user);
+  }
+
+  // ─── HELPERS ──────────────────────────────────────────────────────────────
+
+  private generateTokenResponse(user: Omit<User, 'password'>) {
     this.usersService.updateLastLogin(user.id);
+
     const payload = {
       sub: user.id,
+      phoneNumber: user.phoneNumber,
       email: user.email,
       role: user.role,
-      kycStatus: user.kycStatus,
-      isVerified: user.isVerified,
-      walletAddress: user.walletAddress,
+      isProfileComplete: user.isProfileComplete,
     };
+
     return {
       access_token: this.jwtService.sign(payload),
       user: new UserEntity(user),
     };
-  }
-
-  async forgotPassword(email: string) {
-    const user = await this.usersService.findOneByEmail(email);
-    if (!user)
-      return {
-        message:
-          'Si el correo existe, se ha enviado un enlace para restablecer la contraseña.',
-      };
-
-    const token = uuidv4();
-    const expires = new Date();
-    expires.setHours(expires.getHours() + 1); // El token expira en 1 hora
-    await this.usersService.update(user.id, {
-      resetPasswordToken: token,
-      resetPasswordExpiry: expires,
-    });
-
-    const resetlink =
-      this.configService.get('FRONTEND_URL') + `/reset-password?token=${token}`;
-    await this.mailService.sendPasswordReset(user.email, resetlink);
-
-    return {
-      message:
-        'Si el correo existe, se ha enviado un enlace para restablecer la contraseña.',
-    };
-  }
-
-  async resetPassword(token: string, newPassword: string) {
-    const user = await this.usersService.findOneByResetToken(token);
-
-    if (!user) throw new BadRequestException('Token inválido');
-    if (!user.resetPasswordToken)
-      throw new BadRequestException('Token inválido');
-    if (!user.resetPasswordExpiry)
-      throw new BadRequestException('Token inválido');
-
-    // Verificar si expiró
-    if (new Date() > user.resetPasswordExpiry) {
-      throw new BadRequestException('El token ha expirado');
-    }
-
-    // Hashear nueva contraseña
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Actualizar password y LIMPIAR el token
-    await this.usersService.update(user.id, {
-      password: hashedPassword,
-      resetPasswordToken: null, // Importante limpiar
-      resetPasswordExpiry: null, // Importante limpiar
-    });
-  }
-
-
-  // auth.service.ts
-
-  async validateUserByGoogle(profile: any) {
-    // 1. Buscamos si ya existe por email
-    const user = await this.usersService.findOneByEmail(profile.email);
-    if (user) {
-      // Si existe, retornamos el usuario para que genere el token
-      return user;
-    }
-
-    // 2. Si NO existe, lo creamos
-    console.log('Creando usuario nuevo desde Google...');
-
-    const newUser = await this.usersService.create({
-      email: profile.email,
-      firstName: profile.firstName,
-      lastName: profile.lastName,
-      password: '', // No se usa contraseña
-      isGoogleAccount: true, // (Opcional) Útil para saber que no debe pedir cambio de pass
-      country: Country.BOLIVIA, // O algún valor por defecto o lógica para asignar país
-      isOnboardingCompleted: false,
-    });
-
-    return newUser;
-  }
-
-  // Reutiliza tu método login existente para generar el JWT
-  async googleLogin(user: any) {
-    // Llama a tu lógica de generar JWT que ya tienes
-    return this.login(user);
-  }
-
-  //Funcion para enviar codigo de verificacion
-  async sendVerificationCode(email: string){
-    const n = randomInt(0, 1000000);
-    //convertir a string y rellenar con ceros a la izquierda
-    const code = n.toString().padStart(6, '0');
-    //guardar en cache con expiracion de 5 minutos
-    await this.cacheManager.set(`otp_${email}`, code, 300000);
-    //enviar correo
-    await this.mailService.send6DigitCode(email, code);
-    return { message: 'Código de verificación enviado, expira en 5 minutos' };
-  }
-
-  async verifyCode(email: string, code: string){
-    const cachedCode = await this.cacheManager.get(`otp_${email}`);
-    if (cachedCode === code) {
-      await this.cacheManager.del(`otp_${email}`);
-      return { verified: true };
-    }
-    return { verified: false };
   }
 }

@@ -13,6 +13,8 @@ export class UserEntity implements User {
   updatedAt: Date;
   lastLogin: Date | null;
 
+  isActive: boolean;
+
   @Exclude()
   password: string | null;
 

@@ -6,6 +6,10 @@ import { UsersModule } from './users/users.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { AnfitrioneModule } from './anfitrionas/anfitrionas.module';
 
+import { PackageModule } from './admin/package/package.module';
+import { ClientModule} from './admin/client/client.module';
+import { AnfitrionaModule } from './admin/anfitriona/anfitriona.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -13,6 +17,9 @@ import { AnfitrioneModule } from './anfitrionas/anfitrionas.module';
       envFilePath: '.env',
     }),
     PrismaModule,
+    PackageModule,
+    ClientModule,
+    AnfitrionaModule,
     AuthModule,
     UsersModule,
     CloudinaryModule,

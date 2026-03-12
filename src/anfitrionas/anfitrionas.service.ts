@@ -216,6 +216,7 @@ export class AnfitrioneService {
     const age = profile?.dateOfBirth
       ? this.calculateAge(profile.dateOfBirth)
       : null;
+    const imageUrls = profile?.images.map((img) => img.url) ?? [];
 
     return {
       id: user.id,
@@ -224,7 +225,8 @@ export class AnfitrioneService {
       age,
       bio: profile?.bio ?? null,
       avatar: profile?.avatarUrl ?? null,
-      images: profile?.images.map((img) => img.url) ?? [],
+      coverImage: imageUrls[0] ?? null,
+      images: imageUrls,
       rateCredits: profile?.rateCredits ?? null,
       isOnline: profile?.isOnline ?? false,
     };

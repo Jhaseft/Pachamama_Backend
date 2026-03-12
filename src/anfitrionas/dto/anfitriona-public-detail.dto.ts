@@ -27,12 +27,19 @@ export class AnfitrionePublicDetailDto {
   avatar: string | null;
 
   @ApiProperty({
+    example: 'https://res.cloudinary.com/demo/image/upload/v1/img1.jpg',
+    nullable: true,
+    description: 'Primera imagen del perfil (para usar como portada/cover). Deriva de images[0].',
+  })
+  coverImage: string | null;
+
+  @ApiProperty({
     type: [String],
     example: [
       'https://res.cloudinary.com/demo/image/upload/v1/img1.jpg',
       'https://res.cloudinary.com/demo/image/upload/v1/img2.jpg',
     ],
-    description: 'Imágenes del perfil ordenadas por sortOrder',
+    description: 'Galería de imágenes del perfil ordenadas por sortOrder',
   })
   images: string[];
 

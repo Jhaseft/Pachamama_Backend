@@ -10,6 +10,11 @@ import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { CreateAnfitrioneDto } from './dto/create-anfitriona.dto';
 import { CreateHistoryDto } from './dto/create-history.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import {
+  AnfitrionePublicListItemDto,
+  AnfitrionePublicListResponseDto,
+} from './dto/anfitriona-public-list.dto';
+import { AnfitrionePublicDetailDto } from './dto/anfitriona-public-detail.dto';
 
 @Injectable()
 export class AnfitrioneService {
@@ -231,4 +236,113 @@ export class AnfitrioneService {
     }
   }
 
+  // ─── Public endpoints (cliente-facing) ────────────────────────────────────
+
+  async findAllPublic(): Promise<AnfitrionePublicListResponseDto> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        role: 'ANFITRIONA',
+        isActive: true,
+        isProfileComplete: true,
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        anfitrionaProfile: {
+          select: {
+            avatarUrl: true,
+            bio: true,
+            rateCredits: true,
+            isOnline: true,
+            images: {
+              select: { url: true },
+              orderBy: { sortOrder: 'asc' },
+            },
+          },
+        },
+      },
+    });
+
+    const data: AnfitrionePublicListItemDto[] = users.map((u) => {
+      const profile = u.anfitrionaProfile;
+      const imageUrls = profile?.images.map((img) => img.url) ?? [];
+
+      return {
+        id: u.id,
+        name: [u.firstName, u.lastName].filter(Boolean).join(' '),
+        avatar: profile?.avatarUrl ?? null,
+        shortDescription: profile?.bio ?? null,
+        rateCredits: profile?.rateCredits ?? null,
+        mainImage: imageUrls[0] ?? null,
+        images: imageUrls,
+        isOnline: profile?.isOnline ?? false,
+      };
+    });
+
+    return { data };
+  }
+
+  async findOnePublic(id: string): Promise<AnfitrionePublicDetailDto> {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id,
+        role: 'ANFITRIONA',
+        isActive: true,
+        isProfileComplete: true,
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        anfitrionaProfile: {
+          select: {
+            username: true,
+            dateOfBirth: true,
+            avatarUrl: true,
+            bio: true,
+            rateCredits: true,
+            isOnline: true,
+            images: {
+              select: { url: true },
+              orderBy: { sortOrder: 'asc' },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Anfitriona no encontrada.');
+    }
+
+    const profile = user.anfitrionaProfile;
+    const age = profile?.dateOfBirth
+      ? this.calculateAge(profile.dateOfBirth)
+      : null;
+    const imageUrls = profile?.images.map((img) => img.url) ?? [];
+
+    return {
+      id: user.id,
+      name: [user.firstName, user.lastName].filter(Boolean).join(' '),
+      username: profile?.username ?? '',
+      age,
+      bio: profile?.bio ?? null,
+      avatar: profile?.avatarUrl ?? null,
+      coverImage: imageUrls[0] ?? null,
+      images: imageUrls,
+      rateCredits: profile?.rateCredits ?? null,
+      isOnline: profile?.isOnline ?? false,
+    };
+  }
+
+  private calculateAge(dateOfBirth: Date): number {
+    const today = new Date();
+    let age = today.getFullYear() - dateOfBirth.getFullYear();
+    const monthDiff = today.getMonth() - dateOfBirth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dateOfBirth.getDate())) {
+      age--;
+    }
+    return age;
+  }
 }

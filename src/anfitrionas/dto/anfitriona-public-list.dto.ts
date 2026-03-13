@@ -7,6 +7,9 @@ export class AnfitrionePublicListItemDto {
   @ApiProperty({ example: 'Maria Lopez' })
   name: string;
 
+  @ApiProperty({ example: 'maria_lopez' })
+  username: string;
+
   @ApiProperty({
     example: 'https://res.cloudinary.com/demo/image/upload/v1/avatar.jpg',
     nullable: true,

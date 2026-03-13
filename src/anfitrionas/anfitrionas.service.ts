@@ -147,6 +147,7 @@ export class AnfitrioneService {
         lastName: true,
         anfitrionaProfile: {
           select: {
+            username: true,
             avatarUrl: true,
             bio: true,
             rateCredits: true,
@@ -167,6 +168,7 @@ export class AnfitrioneService {
       return {
         id: u.id,
         name: [u.firstName, u.lastName].filter(Boolean).join(' '),
+        username: profile?.username ?? '',
         avatar: profile?.avatarUrl ?? null,
         shortDescription: profile?.bio ?? null,
         rateCredits: profile?.rateCredits ?? null,

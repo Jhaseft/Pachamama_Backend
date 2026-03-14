@@ -7,6 +7,9 @@ export class AnfitrionePublicListItemDto {
   @ApiProperty({ example: 'Maria Lopez' })
   name: string;
 
+  @ApiProperty({ example: 'maria_lopez', nullable: true })
+  username: string | null;
+
   @ApiProperty({
     example: 'https://res.cloudinary.com/demo/image/upload/v1/avatar.jpg',
     nullable: true,
@@ -43,4 +46,13 @@ export class AnfitrionePublicListItemDto {
 export class AnfitrionePublicListResponseDto {
   @ApiProperty({ type: [AnfitrionePublicListItemDto] })
   data: AnfitrionePublicListItemDto[];
+
+  @ApiProperty({ example: 50, description: 'Total de anfitrionas activas' })
+  total: number;
+
+  @ApiProperty({ example: 1 })
+  page: number;
+
+  @ApiProperty({ example: 10 })
+  limit: number;
 }

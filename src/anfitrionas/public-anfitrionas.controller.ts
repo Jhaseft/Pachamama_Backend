@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Post, Query, Request, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -48,8 +48,11 @@ export class PublicAnfitrioneController {
       ],
     },
   })
-  findAll(): Promise<AnfitrionePublicListResponseDto> {
-    return this.service.findAllPublic();
+  findAll(
+    @Query('page') page = '1',
+    @Query('limit') limit = '10',
+  ): Promise<AnfitrionePublicListResponseDto> {
+    return this.service.findAllPublic(Number(page), Number(limit));
   }
 
   /**

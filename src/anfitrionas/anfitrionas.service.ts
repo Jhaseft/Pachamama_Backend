@@ -387,32 +387,45 @@ export class AnfitrioneService {
 
   // ─── Public endpoints (cliente-facing) ────────────────────────────────────
 
-  async findAllPublic(): Promise<AnfitrionePublicListResponseDto> {
-    const users = await this.prisma.user.findMany({
-      where: {
-        role: 'ANFITRIONA',
-        isActive: true,
-        isProfileComplete: true,
-      },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        _count: { select: { receivedLikes: true } },
-        anfitrionaProfile: {
-          select: {
-            avatarUrl: true,
-            bio: true,
-            rateCredits: true,
-            isOnline: true,
-            images: {
-              select: { url: true },
-              orderBy: { sortOrder: 'asc' },
+  async findAllPublic(page = 1, limit = 10): Promise<AnfitrionePublicListResponseDto> {
+    const where = {
+      role: 'ANFITRIONA' as const,
+      isActive: true,
+      isProfileComplete: true,
+    };
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        orderBy: [
+          { anfitrionaProfile: { isOnline: 'desc' } },
+          { receivedLikes: { _count: 'desc' } },
+          { createdAt: 'desc' },
+        ],
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          _count: { select: { receivedLikes: true } },
+          anfitrionaProfile: {
+            select: {
+              username: true,
+              avatarUrl: true,
+              bio: true,
+              rateCredits: true,
+              isOnline: true,
+              images: {
+                select: { url: true },
+                orderBy: { sortOrder: 'asc' },
+              },
             },
           },
         },
-      },
-    });
+      }),
+      this.prisma.user.count({ where }),
+    ]);
 
     const data: AnfitrionePublicListItemDto[] = users.map((u) => {
       const profile = u.anfitrionaProfile;
@@ -421,6 +434,7 @@ export class AnfitrioneService {
       return {
         id: u.id,
         name: [u.firstName, u.lastName].filter(Boolean).join(' '),
+        username: profile?.username ?? null,
         avatar: profile?.avatarUrl ?? null,
         shortDescription: profile?.bio ?? null,
         rateCredits: profile?.rateCredits ?? null,
@@ -431,7 +445,7 @@ export class AnfitrioneService {
       };
     });
 
-    return { data };
+    return { data, total, page, limit };
   }
 
   async findOnePublic(id: string, currentUserId?: string): Promise<AnfitrionePublicDetailDto> {

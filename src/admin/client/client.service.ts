@@ -49,49 +49,49 @@ export class ClientService {
     }
 
     // LISTAR CLIENTES + BUSQUEDA
-    async findAll(search?: string, page: number = 1, limit: number = 10) {
+    async findAll(search?: string, cursor?: string, limit: number = 10) {
 
-    const skip = (page - 1) * limit;
+        const whereCondition: Prisma.UserWhereInput = {
+            role: UserRole.USER,
+            ...(search && {
+                OR: [
+                    { firstName: { contains: search, mode: 'insensitive' } },
+                    { lastName: { contains: search, mode: 'insensitive' } },
+                    { phoneNumber: { contains: search } },
+                    { email: { contains: search, mode: 'insensitive' } },
+                ]
+            })
+        };
 
-    const whereCondition: Prisma.UserWhereInput = {
-        role: UserRole.USER,
-        ...(search && {
-            OR: [
-                { firstName: { contains: search, mode: 'insensitive' } },
-                { lastName: { contains: search, mode: 'insensitive' } },
-                { phoneNumber: { contains: search } },
-                { email: { contains: search, mode: 'insensitive' } },
-            ]
-        })
-    };
-    const [clients, total] = await Promise.all([
-        this.prisma.user.findMany({
+        const clients = await this.prisma.user.findMany({
             where: whereCondition,
             include: {
                 wallet: {
                     select: { balance: true }
                 }
             },
-            orderBy: { createdAt: 'desc' },
-            skip: skip,
-            take: limit
-        }),
+            orderBy: { id: 'desc' },
+            take: limit + 1, // para saber si hay más datos
+            ...(cursor && {
+                skip: 1,
+                cursor: { id: cursor }
+            })
+        });
 
-        this.prisma.user.count({
-            where: whereCondition
-        })
-    ]);
+        let nextCursor: string | null = null;
 
-    const sanitizedClients = clients.map(({ password, ...clientData }) => clientData);
-    return {
-        data: sanitizedClients,
-        meta: {
-            total,
-            page,
-            lastPage: Math.ceil(total / limit),
-            limit
+        if (clients.length > limit) {
+            clients.pop(); // quitamos el extra
+            nextCursor = clients[clients.length - 1].id; // último que enviamos
         }
-    };
-}
+
+        const sanitized = clients.map(({ password, ...data }) => data);
+
+        return {
+            data: sanitized,
+            nextCursor
+        };
+    }
+
 
 }

@@ -11,17 +11,24 @@ export class ClientController {
   /**
    * LISTAR TODOS LOS CLIENTES (USUARIOS ROL USER)
    */
+
   @Get()
-  @ApiOperation({ summary: 'Listar clientes o buscar por nombre, email o teléfono' })
+  @ApiOperation({ summary: 'Listar clientes con paginacion infinita' })
+
   @ApiQuery({ name: 'search', required: false })
-  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'cursor', required: false, description: 'ID del último registro recibido' })
   @ApiQuery({ name: 'limit', required: false, example: 10 })
+
   findAll(
     @Query('search') search?: string,
-    @Query('page') page: number = 1,
+    @Query('cursor') cursor?: string,
     @Query('limit') limit: number = 10,
   ) {
-    return this.clientService.findAll(search, Number(page), Number(limit));
+    return this.clientService.findAll(
+      search,
+      cursor,
+      Number(limit),
+    );
   }
 
   /**

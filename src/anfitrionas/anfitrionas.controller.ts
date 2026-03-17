@@ -60,14 +60,16 @@ export class AnfitrioneController {
     return this.service.findAll();
   }
 
-  /**
-   * GET /anfitrionas/:id
-   * Obtiene una anfitriona por su userId
-   */
-  @Get(':id')
-  @Roles(UserRole.ADMIN)
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id);
+  
+  // 1. OBTENER EL FEED DE HISTORIAS PARA CLIENTES (Círculos rojos/blancos)
+  @Get('feed/stories')
+  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.ANFITRIONA) // Todos pueden ver el feed
+  async getStoriesFeed(@Request() req): Promise<HistoryFeedResponseDto> {
+    const userId = req.user?.id || req.user?.userId || req.user?.sub;
+
+    console.log(`[Feed] Solicitado por Usuario ID: ${userId} - Rol: ${req.user?.role}`);
+
+    return this.service.getStoriesFeed(userId);
   }
 
   // ─── Own profile ──────────────────────────────────────────────────────────
@@ -153,17 +155,6 @@ export class AnfitrioneController {
     return this.service.findAllStories(userId);
   }
 
-  // 1. OBTENER EL FEED DE HISTORIAS PARA CLIENTES (Círculos rojos/blancos)
-  @Get('feed/stories')
-  @Roles(UserRole.USER, UserRole.ADMIN, UserRole.ANFITRIONA) // Todos pueden ver el feed
-  async getStoriesFeed(@Request() req): Promise<HistoryFeedResponseDto> {
-    const userId = req.user?.id || req.user?.userId || req.user?.sub;
-
-    console.log(`[Feed] Solicitado por Usuario ID: ${userId} - Rol: ${req.user?.role}`);
-
-    return this.service.getStoriesFeed(userId);
-  }
-
   // 2. MARCAR UNA HISTORIA COMO VISTA
   @Post('history/:id/view')
   @Roles(UserRole.USER, UserRole.ANFITRIONA)
@@ -181,6 +172,15 @@ export class AnfitrioneController {
     return this.service.markAsViewed(userId, historyId);
   }
 
+  /**
+   * GET /anfitrionas/:id
+   * Obtiene una anfitriona por su userId
+   */
+  @Get(':id')
+  @Roles(UserRole.ADMIN)
+  findOne(@Param('id') id: string) {
+    return this.service.findOne(id);
+  }
 
 }
 

@@ -70,10 +70,7 @@ export class AnfitrionaService {
                     select: { balance: true }
                 }
             },
-            orderBy: [
-                { isActive: 'desc' },
-                { createdAt: 'desc' }
-            ],
+            orderBy: { id: 'desc' },
             take: limit + 1, // para saber si hay más datos
             ...(cursor && {
                 skip: 1,
@@ -84,9 +81,10 @@ export class AnfitrionaService {
         let nextCursor: string | null = null;
 
         if (anfitriona.length > limit) {
-            const nextItem = anfitriona.pop();
-            nextCursor = nextItem!.id;
+            anfitriona.pop(); // quitamos el extra
+            nextCursor = anfitriona[anfitriona.length - 1].id; // último que enviamos
         }
+
 
         const sanitized = anfitriona.map(({ password, ...data }) => data);
 
@@ -96,5 +94,5 @@ export class AnfitrionaService {
         };
     }
 
-   
+
 }

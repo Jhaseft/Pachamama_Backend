@@ -399,7 +399,6 @@ export class AnfitrioneService {
         where,
         orderBy: [
           { anfitrionaProfile: { isOnline: 'desc' } },
-          { receivedLikes: { _count: 'desc' } },
           { createdAt: 'desc' },
         ],
         skip: (page - 1) * limit,
@@ -443,6 +442,11 @@ export class AnfitrioneService {
         isOnline: profile?.isOnline ?? false,
         likesCount: u._count.receivedLikes,
       };
+    });
+
+    data.sort((a, b) => {
+      if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+      return (b.likesCount ?? 0) - (a.likesCount ?? 0);
     });
 
     return { data, total, page, limit };

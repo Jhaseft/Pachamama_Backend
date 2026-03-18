@@ -1,7 +1,8 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post, Query, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Post, Query, Request, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AnfitrioneService } from './anfitrionas.service';
@@ -18,11 +19,10 @@ export class PublicAnfitrioneController {
   /**
    * GET /anfitrionas/public
    * Listado público de anfitrionas activas para la pantalla de feed del cliente.
-   * No requiere autenticación.
-   * TODO (isFavorite): cuando se implemente favoritos, añadir guard JWT opcional
-   *   y pasar userId del token para enriquecer la respuesta con isFavorite.
+   * No requiere autenticación; si hay token válido se puebla isLiked por item.
    */
   @Get()
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     summary: 'Listado público de anfitrionas',
     description:
@@ -51,16 +51,20 @@ export class PublicAnfitrioneController {
   findAll(
     @Query('page') page = '1',
     @Query('limit') limit = '10',
+    @Request() req,
   ): Promise<AnfitrionePublicListResponseDto> {
-    return this.service.findAllPublic(Number(page), Number(limit));
+    const currentUserId: string | undefined =
+      req.user?.id ?? req.user?.userId ?? req.user?.sub;
+    return this.service.findAllPublic(Number(page), Number(limit), currentUserId);
   }
 
   /**
    * GET /anfitrionas/public/:id
    * Perfil público detallado de una anfitriona (HU2).
-   * No requiere autenticación.
+   * No requiere autenticación; si hay token válido se puebla isLiked.
    */
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     summary: 'Perfil público de una anfitriona',
     description: 'Devuelve información pública detallada de una anfitriona activa (HU2).',
@@ -88,8 +92,11 @@ export class PublicAnfitrioneController {
   @ApiResponse({ status: 404, description: 'Anfitriona no encontrada' })
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
+    @Request() req,
   ): Promise<AnfitrionePublicDetailDto> {
-    return this.service.findOnePublic(id);
+    const currentUserId: string | undefined =
+      req.user?.id ?? req.user?.userId ?? req.user?.sub;
+    return this.service.findOnePublic(id, currentUserId);
   }
 
   /**
@@ -107,7 +114,11 @@ export class PublicAnfitrioneController {
     @Param('id', ParseUUIDPipe) anfitrionaId: string,
     @Request() req,
   ): Promise<{ liked: boolean; likesCount: number }> {
-    const userId = req.user?.id ?? req.user?.userId ?? req.user?.sub;
+    const userId: string | undefined =
+      req.user?.id ?? req.user?.userId ?? req.user?.sub;
+    if (!userId) {
+      throw new UnauthorizedException('No se pudo identificar al usuario.');
+    }
     return this.service.toggleLike(userId, anfitrionaId);
   }
 }

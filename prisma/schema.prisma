@@ -27,8 +27,40 @@ model User {
   historyViews        HistoryView[]
   givenLikes          Like[]             @relation("GivenLikes")
   receivedLikes       Like[]             @relation("ReceivedLikes")
+  conversationsAsUser1 Conversation[]   @relation("ConversationUser1")
+  conversationsAsUser2 Conversation[]   @relation("ConversationUser2")
+  sentMessages         Message[]        @relation("SentMessages")
 
   @@map("users")
+}
+
+model Conversation {
+  id        String    @id @default(uuid())
+  user1Id   String
+  user2Id   String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user1     User      @relation("ConversationUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2     User      @relation("ConversationUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@unique([user1Id, user2Id])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  senderId       String
+  text           String
+  read           Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+
+  @@map("messages")
 }
 
 model Like {
@@ -68,12 +100,15 @@ model AnfitrioneProfile {
 }
 
 model AnfitrioneImage {
-  id        String   @id @default(uuid())
-  profileId String
-  url       String
-  publicId  String?
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
+  id            String   @id @default(uuid())
+  profileId     String
+  url           String
+  publicId      String?
+  sortOrder     Int      @default(0)
+  isPremium     Boolean  @default(false)
+  unlockCredits Int?     // null = gratuita; > 0 = créditos requeridos para desbloquear
+  isVisible     Boolean  @default(true)
+  createdAt     DateTime @default(now())
 
   profile AnfitrioneProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 

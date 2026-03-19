@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { Prisma, UserRole, MediaType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
@@ -20,6 +21,8 @@ import {
 import { AnfitrionePublicDetailDto } from './dto/anfitriona-public-detail.dto';
 import { HistoryFeedResponseDto } from './dto/history-feed.dto';
 import { CreateWalletDto } from './dto/create-wallet.dto';
+import { CreateGalleryImageDto } from './dto/create-gallery-image.dto';
+import { GalleryImageDto, GalleryImagePublicDto } from './dto/gallery-image.dto';
 
 @Injectable()
 export class AnfitrioneService {
@@ -53,6 +56,8 @@ export class AnfitrioneService {
       throw new ConflictException('El email ya está registrado.');
 
     // Crear usuario con role ANFITRIONA
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
     let user: Awaited<ReturnType<typeof this.prisma.user.create>>;
     try {
       user = await this.prisma.user.create({
@@ -61,6 +66,7 @@ export class AnfitrioneService {
           email: dto.email,
           firstName: dto.firstName,
           lastName: dto.lastName,
+          password: hashedPassword,
           role: 'ANFITRIONA',
           isProfileComplete: true,
 
@@ -405,7 +411,7 @@ export class AnfitrioneService {
 
   // ─── Public endpoints (cliente-facing) ────────────────────────────────────
 
-  async findAllPublic(page = 1, limit = 10): Promise<AnfitrionePublicListResponseDto> {
+  async findAllPublic(page = 1, limit = 10, currentUserId?: string): Promise<AnfitrionePublicListResponseDto> {
     const where = {
       role: 'ANFITRIONA' as const,
       isActive: true,
@@ -417,7 +423,6 @@ export class AnfitrioneService {
         where,
         orderBy: [
           { anfitrionaProfile: { isOnline: 'desc' } },
-          { receivedLikes: { _count: 'desc' } },
           { createdAt: 'desc' },
         ],
         skip: (page - 1) * limit,
@@ -435,6 +440,7 @@ export class AnfitrioneService {
               rateCredits: true,
               isOnline: true,
               images: {
+                where: { isVisible: true },
                 select: { url: true },
                 orderBy: { sortOrder: 'asc' },
               },
@@ -444,6 +450,17 @@ export class AnfitrioneService {
       }),
       this.prisma.user.count({ where }),
     ]);
+
+    // Fetch all likes by the current user in a single query to avoid N+1
+    let likedIds = new Set<string>();
+    if (currentUserId && users.length > 0) {
+      const anfitrionaIds = users.map((u) => u.id);
+      const userLikes = await this.prisma.like.findMany({
+        where: { userId: currentUserId, anfitrionaId: { in: anfitrionaIds } },
+        select: { anfitrionaId: true },
+      });
+      likedIds = new Set(userLikes.map((l) => l.anfitrionaId));
+    }
 
     const data: AnfitrionePublicListItemDto[] = users.map((u) => {
       const profile = u.anfitrionaProfile;
@@ -460,7 +477,13 @@ export class AnfitrioneService {
         images: imageUrls,
         isOnline: profile?.isOnline ?? false,
         likesCount: u._count.receivedLikes,
+        isLiked: likedIds.has(u.id),
       };
+    });
+
+    data.sort((a, b) => {
+      if (a.isOnline !== b.isOnline) return a.isOnline ? -1 : 1;
+      return (b.likesCount ?? 0) - (a.likesCount ?? 0);
     });
 
     return { data, total, page, limit };
@@ -488,7 +511,8 @@ export class AnfitrioneService {
             rateCredits: true,
             isOnline: true,
             images: {
-              select: { url: true },
+              where: { isVisible: true },
+              select: { id: true, url: true, isPremium: true, unlockCredits: true },
               orderBy: { sortOrder: 'asc' },
             },
           },
@@ -504,7 +528,13 @@ export class AnfitrioneService {
     const age = profile?.dateOfBirth
       ? this.calculateAge(profile.dateOfBirth)
       : null;
-    const imageUrls = profile?.images.map((img) => img.url) ?? [];
+
+    const galleryImages: GalleryImagePublicDto[] = (profile?.images ?? []).map((img) => ({
+      id: img.id,
+      imageUrl: img.url,
+      isPremium: img.isPremium,
+      unlockCredits: img.isPremium ? img.unlockCredits : null,
+    }));
 
     let isLiked = false;
     if (currentUserId) {
@@ -521,8 +551,9 @@ export class AnfitrioneService {
       age,
       bio: profile?.bio ?? null,
       avatar: profile?.avatarUrl ?? null,
-      coverImage: imageUrls[0] ?? null,
-      images: imageUrls,
+      coverImage: galleryImages[0]?.imageUrl ?? null,
+      images: galleryImages.map((img) => img.imageUrl),
+      galleryImages,
       rateCredits: profile?.rateCredits ?? null,
       isOnline: profile?.isOnline ?? false,
       likesCount: user._count.receivedLikes,
@@ -641,22 +672,112 @@ export class AnfitrioneService {
       throw new NotFoundException('Anfitriona no encontrada.');
     }
 
-    const existing = await this.prisma.like.findUnique({
-      where: { userId_anfitrionaId: { userId, anfitrionaId } },
-    });
-
-    if (existing) {
-      await this.prisma.like.delete({
+    // Use a transaction so the read-then-write is atomic and concurrent
+    // requests cannot both create the same like (race condition).
+    const liked = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.like.findUnique({
         where: { userId_anfitrionaId: { userId, anfitrionaId } },
       });
-    } else {
-      await this.prisma.like.create({
-        data: { userId, anfitrionaId },
-      });
-    }
+
+      if (existing) {
+        await tx.like.delete({
+          where: { userId_anfitrionaId: { userId, anfitrionaId } },
+        });
+        return false;
+      } else {
+        await tx.like.create({ data: { userId, anfitrionaId } });
+        return true;
+      }
+    });
 
     const likesCount = await this.prisma.like.count({ where: { anfitrionaId } });
-    return { liked: !existing, likesCount };
+    return { liked, likesCount };
+  }
+
+  // ─── Galería permanente (HU: bloqueo de imágenes premium) ────────────────
+
+  /**
+   * Publica una imagen permanente en la galería de la anfitriona autenticada.
+   * Sube el archivo a Cloudinary y crea el registro en AnfitrioneImage.
+   */
+  async publishGalleryImage(
+    userId: string,
+    dto: CreateGalleryImageDto,
+    file: Express.Multer.File,
+  ): Promise<GalleryImageDto> {
+    const profile = await this.prisma.anfitrioneProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Perfil de anfitriona no encontrado.');
+    }
+
+    if (dto.isPremium && (!dto.unlockCredits || dto.unlockCredits <= 0)) {
+      throw new BadRequestException(
+        'Las imágenes premium requieren unlockCredits mayor a 0.',
+      );
+    }
+
+    const upload = await this.cloudinary.uploadGalleryImage({ file, userId });
+
+    const image = await this.prisma.anfitrioneImage.create({
+      data: {
+        profileId: profile.id,
+        url: upload.secureUrl,
+        publicId: upload.publicId,
+        isPremium: dto.isPremium,
+        unlockCredits: dto.isPremium ? dto.unlockCredits! : null,
+        isVisible: true,
+        sortOrder: 0,
+      },
+    });
+
+    return {
+      id: image.id,
+      imageUrl: image.url,
+      isPremium: image.isPremium,
+      unlockCredits: image.unlockCredits,
+      isVisible: image.isVisible,
+      createdAt: image.createdAt.toISOString(),
+    };
+  }
+
+  /**
+   * Devuelve la galería completa de la anfitriona autenticada
+   * (con toda la metadata de gestión).
+   */
+  async getMyGallery(userId: string): Promise<GalleryImageDto[]> {
+    const profile = await this.prisma.anfitrioneProfile.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        images: {
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            id: true,
+            url: true,
+            isPremium: true,
+            unlockCredits: true,
+            isVisible: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Perfil de anfitriona no encontrado.');
+    }
+
+    return profile.images.map((img) => ({
+      id: img.id,
+      imageUrl: img.url,
+      isPremium: img.isPremium,
+      unlockCredits: img.unlockCredits,
+      isVisible: img.isVisible,
+      createdAt: img.createdAt.toISOString(),
+    }));
   }
 
   private calculateAge(dateOfBirth: Date): number {

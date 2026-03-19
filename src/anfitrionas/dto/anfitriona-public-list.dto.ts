@@ -41,6 +41,9 @@ export class AnfitrionePublicListItemDto {
 
   @ApiProperty({ example: 42, description: 'Total de likes recibidos' })
   likesCount: number;
+
+  @ApiProperty({ example: false, description: 'Si el usuario autenticado ya dio like' })
+  isLiked: boolean;
 }
 
 export class AnfitrionePublicListResponseDto {

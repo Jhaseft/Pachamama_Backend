@@ -11,6 +11,7 @@ import { ClientModule} from './admin/client/client.module';
 import { AnfitrionaModule } from './admin/anfitriona/anfitriona.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ChatsModule } from './chats/chats.module';
+import { MessagesModule } from './messages/messages.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ChatsModule } from './chats/chats.module';
     CloudinaryModule,
     AnfitrioneModule,
     ChatsModule,
+    MessagesModule,
   ],
   controllers: [],
   providers: [],

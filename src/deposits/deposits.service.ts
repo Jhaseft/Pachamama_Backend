@@ -2,16 +2,19 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service'; // Ajusta la ruta a tu PrismaService
 import { CreateDepositRequestDto } from './dto/create-depositRequest.dto';
 import { DepositStatus, UserRole } from '@prisma/client';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 @Injectable()
 export class DepositsService {
-    constructor(private prisma: PrismaService) { }
+    constructor(
+        private cloudinaryService: CloudinaryService,
+        private prisma: PrismaService) { }
 
     //SERVICIO PARA CREAR UN DEPÓSITO POR LA COMPRA DE UN PAQUETE
     async createDepositRequest(
         userId: string,
         createDepositDto: CreateDepositRequestDto,
-        receiptData: { url: string; publicId: string }
+        file: Express.Multer.File,
     ) {
 
         //validar que el paquete exista y este activo
@@ -40,9 +43,15 @@ export class DepositsService {
             where: { id: userId, role: UserRole.USER, isActive: true }
         });
 
-        if (!user || !user.isActive) {
+        if (!user) {
             throw new NotFoundException('El usuario no existe o no está activo.');
         }
+
+        //subir al archivo usando el servicio de cloudinary
+        const uploadResult = await this.cloudinaryService.uploadDepositPaymentProof({
+            file,
+            userId
+        })
 
         //crear la solicitud de depósito en estado PENDING y usando el precio del paquete (pkg.price)
         return await this.prisma.depositRequest.create({
@@ -52,8 +61,8 @@ export class DepositsService {
                 paymentMethodId: createDepositDto.paymentMethodId,
                 amount: pkg.price,
                 status: DepositStatus.PENDING,
-                receiptUrl: receiptData.url,
-                receiptPublicId: receiptData.publicId,
+                receiptUrl: uploadResult.secureUrl,
+                receiptPublicId: uploadResult.publicId,
             },
             include: {
                 package: true,

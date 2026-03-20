@@ -1,0 +1,77 @@
+import {
+    Controller,
+    Post,
+    Body,
+    UseInterceptors,
+    UploadedFile,
+    ParseFilePipe,
+    MaxFileSizeValidator,
+    FileTypeValidator,
+    UseGuards,
+    BadRequestException,
+    Logger
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { DepositsService } from './deposits.service';
+import { CreateDepositRequestDto } from './dto/create-depositRequest.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // Ajusta la ruta a tu Guard
+import { CurrentUser } from '../auth/decorators/current-user.decorator';// Ajusta la ruta a tu decorador
+
+@ApiTags('Deposits')
+@Controller('deposits')
+@UseGuards(JwtAuthGuard) // Protegemos el endpoint, solo usuarios autenticados
+
+export class DepositsController {
+
+    private readonly logger = new Logger(DepositsController.name);
+
+    constructor(private readonly depositsService: DepositsService) { }
+
+    @Post('request')
+    @ApiOperation({ summary: 'Crear una solicitud de depósito para compra de paquete' })
+    @ApiConsumes('multipart/form-data') // Necesario para Swagger al subir archivos
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                packageId: { type: 'string', example: 'uuid-del-paquete' },
+                paymentMethodId: { type: 'string', example: 'uuid-del-metodo' },
+                file: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'Imagen del comprobante (PNG, JPG, JPEG, PDF)',
+                },
+            },
+        },
+    })
+
+    @UseInterceptors(FileInterceptor('file')) // El nombre del campo que viene del frontend
+    async createDeposit(
+        @CurrentUser('id') userId: string, // Extraemos el ID del Token JWT (usuario logeado)
+        @Body() createDepositDto: CreateDepositRequestDto,
+        @UploadedFile(
+            new ParseFilePipe({
+                validators: [
+                    new MaxFileSizeValidator({ maxSize: 1024 * 1024 * 5 }), // Máximo 5MB
+                    new FileTypeValidator({ fileType: /(png|jpeg|jpg|pdf)$/ }),
+                ],
+            }),
+        ) file: Express.Multer.File,
+    ) {
+
+        this.logger.log(`📥 POST /deposits/request - userId: ${userId}`);
+        this.logger.debug(`DTO → ${JSON.stringify(createDepositDto)}`);
+
+        if (!file) {
+            this.logger.warn(`⚠️ Usuario ${userId} no envió comprobante`);
+            throw new BadRequestException('Debe subir un comprobante de pago');
+        }
+
+        const result = await this.depositsService.createDepositRequest(userId, createDepositDto, file);
+
+        this.logger.log(`✅ Depósito creado correctamente para usuario ${userId}`);
+
+        return result;
+    }
+}

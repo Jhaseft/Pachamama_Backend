@@ -18,7 +18,8 @@ export class MessagesGateway {
   server: Server;
 
   constructor(private readonly messagesService: MessagesService) {}
-
+  
+  //regitrar al usaurio para que peuda entrar a la sala 
   @SubscribeMessage('register')
   handleRegister(
     @MessageBody() userId: string,
@@ -28,6 +29,8 @@ export class MessagesGateway {
     console.log(`Usuario ${userId} conectado`);
   }
 
+  //cuando se manda el mensaje recive el evento send_message para conecetarlo al clinete , guarda el mensaje en bd y luego emite al receptor
+  //osea lo manda al cliente y si todo sale sale bien confirma con otro evento llamado message sent 
   @SubscribeMessage('send_message')
   async handleMessage(
     @MessageBody() data: { senderId: string; receiverId: string; text: string },
@@ -49,4 +52,5 @@ export class MessagesGateway {
   sendMessageToUser(userId: string, message: any) {
     this.server.to(`user_${userId}`).emit('new_message', message);
   }
+  
 }

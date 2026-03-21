@@ -22,6 +22,7 @@ import { AnfitrionePublicDetailDto } from './dto/anfitriona-public-detail.dto';
 import { HistoryFeedResponseDto } from './dto/history-feed.dto';
 import { CreateWalletDto } from './dto/create-wallet.dto';
 import { CreateGalleryImageDto } from './dto/create-gallery-image.dto';
+import { UpdateGalleryImageDto } from './dto/update-gallery-image.dto';
 import { GalleryImageDto, GalleryImagePublicDto } from './dto/gallery-image.dto';
 
 @Injectable()
@@ -507,6 +508,7 @@ export class AnfitrioneService {
             username: true,
             dateOfBirth: true,
             avatarUrl: true,
+            coverUrl: true,
             bio: true,
             rateCredits: true,
             isOnline: true,
@@ -566,7 +568,7 @@ export class AnfitrioneService {
       age,
       bio: profile?.bio ?? null,
       avatar: profile?.avatarUrl ?? null,
-      coverImage: galleryImages[0]?.imageUrl ?? null,
+      coverImage: profile?.coverUrl ?? galleryImages[0]?.imageUrl ?? null,
       images: galleryImages.map((img) => img.imageUrl),
       galleryImages,
       rateCredits: profile?.rateCredits ?? null,
@@ -688,23 +690,27 @@ export class AnfitrioneService {
   // ─── Own profile (anfitriona-facing) ──────────────────────────────────────
 
   async getMyProfile(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        anfitrionaProfile: {
-          select: {
-            username: true,
-            bio: true,
-            rateCredits: true,
-            isOnline: true,
-            avatarUrl: true,
+    const [user, likesCount] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          anfitrionaProfile: {
+            select: {
+              username: true,
+              bio: true,
+              rateCredits: true,
+              isOnline: true,
+              avatarUrl: true,
+              coverUrl: true,
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.like.count({ where: { anfitrionaId: userId } }),
+    ]);
 
     if (!user) throw new NotFoundException('Usuario no encontrado.');
 
@@ -717,6 +723,8 @@ export class AnfitrioneService {
       rateCredits: user.anfitrionaProfile?.rateCredits ?? 0,
       isOnline: user.anfitrionaProfile?.isOnline ?? false,
       avatarUrl: user.anfitrionaProfile?.avatarUrl ?? null,
+      coverUrl: user.anfitrionaProfile?.coverUrl ?? null,
+      likesCount,
     };
   }
 
@@ -724,6 +732,7 @@ export class AnfitrioneService {
     userId: string,
     dto: UpdateAnfitrioneProfileDto,
     avatarFile?: Express.Multer.File,
+    coverFile?: Express.Multer.File,
   ) {
     // Check username uniqueness if changing it
     if (dto.username) {
@@ -741,6 +750,13 @@ export class AnfitrioneService {
         userId,
       });
       avatarUpdate = { avatarUrl: uploaded.secureUrl, avatarPublicId: uploaded.publicId };
+    }
+
+    // Upload cover/banner if provided
+    let coverUpdate: { coverUrl: string; coverPublicId: string } | undefined;
+    if (coverFile) {
+      const uploaded = await this.cloudinary.uploadCoverImage({ file: coverFile, userId });
+      coverUpdate = { coverUrl: uploaded.secureUrl, coverPublicId: uploaded.publicId };
     }
 
     // Update user fields
@@ -761,9 +777,14 @@ export class AnfitrioneService {
     if (profileFields.username !== undefined) profileData.username = profileFields.username;
     if (profileFields.bio !== undefined) profileData.bio = profileFields.bio;
     if (profileFields.rateCredits !== undefined) profileData.rateCredits = profileFields.rateCredits;
+    if (profileFields.isOnline !== undefined) profileData.isOnline = profileFields.isOnline;
     if (avatarUpdate) {
       profileData.avatarUrl = avatarUpdate.avatarUrl;
       profileData.avatarPublicId = avatarUpdate.avatarPublicId;
+    }
+    if (coverUpdate) {
+      profileData.coverUrl = coverUpdate.coverUrl;
+      profileData.coverPublicId = coverUpdate.coverPublicId;
     }
 
     if (Object.keys(profileData).length > 0) {
@@ -902,6 +923,115 @@ export class AnfitrioneService {
       isVisible: img.isVisible,
       createdAt: img.createdAt.toISOString(),
     }));
+  }
+
+  /**
+   * Marca una imagen como la imagen destacada del feed (sortOrder = 0).
+   * El resto de imágenes de la galería pasan a sortOrder = 1.
+   */
+  async setFeaturedGalleryImage(userId: string, imageId: string): Promise<GalleryImageDto> {
+    const profile = await this.prisma.anfitrioneProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Perfil de anfitriona no encontrado.');
+    }
+
+    const image = await this.prisma.anfitrioneImage.findFirst({
+      where: { id: imageId, profileId: profile.id },
+    });
+
+    if (!image) {
+      throw new NotFoundException('Imagen no encontrada o no pertenece a tu galería.');
+    }
+
+    // Transacción: todas a sortOrder=1, la elegida a sortOrder=0
+    const [, updated] = await this.prisma.$transaction([
+      this.prisma.anfitrioneImage.updateMany({
+        where: { profileId: profile.id },
+        data: { sortOrder: 1 },
+      }),
+      this.prisma.anfitrioneImage.update({
+        where: { id: imageId },
+        data: { sortOrder: 0 },
+      }),
+    ]);
+
+    return {
+      id: updated.id,
+      imageUrl: updated.url,
+      isPremium: updated.isPremium,
+      unlockCredits: updated.unlockCredits,
+      isVisible: updated.isVisible,
+      createdAt: updated.createdAt.toISOString(),
+    };
+  }
+
+  /**
+   * Elimina una imagen de la galería de la anfitriona autenticada.
+   * Borra el archivo en Cloudinary y el registro en la base de datos.
+   */
+  async deleteMyGalleryImage(userId: string, imageId: string): Promise<void> {
+    const image = await this.prisma.anfitrioneImage.findFirst({
+      where: { id: imageId, profile: { userId } },
+      select: { id: true, publicId: true },
+    });
+
+    if (!image) {
+      throw new NotFoundException('Imagen no encontrada o no tienes permiso para eliminarla.');
+    }
+
+    if (image.publicId) {
+      await this.cloudinary.deleteGalleryImage(image.publicId);
+    }
+
+    await this.prisma.anfitrioneImage.delete({ where: { id: imageId } });
+  }
+
+  /**
+   * Actualiza los metadatos de una imagen de la galería.
+   * Permite cambiar isPremium, unlockCredits, isVisible y sortOrder.
+   */
+  async updateMyGalleryImage(
+    userId: string,
+    imageId: string,
+    dto: UpdateGalleryImageDto,
+  ): Promise<GalleryImageDto> {
+    const image = await this.prisma.anfitrioneImage.findFirst({
+      where: { id: imageId, profile: { userId } },
+    });
+
+    if (!image) {
+      throw new NotFoundException('Imagen no encontrada o no tienes permiso para editarla.');
+    }
+
+    if (dto.isPremium && dto.unlockCredits !== undefined && dto.unlockCredits <= 0) {
+      throw new BadRequestException('Las imágenes premium requieren unlockCredits mayor a 0.');
+    }
+
+    const data: Prisma.AnfitrioneImageUpdateInput = {};
+    if (dto.isPremium !== undefined) data.isPremium = dto.isPremium;
+    if (dto.unlockCredits !== undefined) data.unlockCredits = dto.unlockCredits;
+    if (dto.isVisible !== undefined) data.isVisible = dto.isVisible;
+    if (dto.sortOrder !== undefined) data.sortOrder = dto.sortOrder;
+    // Si se desactiva premium, limpiar unlockCredits
+    if (dto.isPremium === false) data.unlockCredits = null;
+
+    const updated = await this.prisma.anfitrioneImage.update({
+      where: { id: imageId },
+      data,
+    });
+
+    return {
+      id: updated.id,
+      imageUrl: updated.url,
+      isPremium: updated.isPremium,
+      unlockCredits: updated.unlockCredits,
+      isVisible: updated.isVisible,
+      createdAt: updated.createdAt.toISOString(),
+    };
   }
 
   private calculateAge(dateOfBirth: Date): number {

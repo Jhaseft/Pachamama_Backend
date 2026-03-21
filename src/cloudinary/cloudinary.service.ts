@@ -411,6 +411,33 @@ export class CloudinaryService {
     });
   }
 
+  async uploadCoverImage(params: {
+    file: Express.Multer.File;
+    userId: string;
+  }): Promise<{ secureUrl: string; publicId: string }> {
+    const { file, userId } = params;
+
+    if (!file.mimetype.startsWith('image/')) {
+      throw new InternalServerErrorException('Solo se permiten imágenes para el banner.');
+    }
+
+    const folder = `pachamama/anfitrionas/${userId}/cover`;
+    const publicId = `cover_${Date.now()}`;
+
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { folder, public_id: publicId, resource_type: 'image' },
+        (error, result) => {
+          if (error || !result?.secure_url) {
+            return reject(new InternalServerErrorException('Error al subir el banner a Cloudinary.'));
+          }
+          resolve({ secureUrl: result.secure_url, publicId: result.public_id });
+        },
+      );
+      uploadStream.end(file.buffer);
+    });
+  }
+
   //ELIMINAR UNA HISTORIA DE UNA ANFITRIONA
   async deleteHistoryMedia(publicId: string, type: 'image' | 'video') {
     try {

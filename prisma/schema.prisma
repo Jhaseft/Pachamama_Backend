@@ -95,6 +95,8 @@ model AnfitrioneProfile {
   // Public profile fields
   avatarUrl      String?
   avatarPublicId String?
+  coverUrl       String?
+  coverPublicId  String?
   bio            String?
   rateCredits    Int?
   isOnline       Boolean  @default(false)

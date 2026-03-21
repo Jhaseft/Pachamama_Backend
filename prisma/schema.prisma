@@ -32,6 +32,7 @@ model User {
   sentMessages         Message[]          @relation("SentMessages")
   depositRequests      DepositRequest[]
   messageUnlocks       MessageUnlock[]
+  imageUnlocks         ImageUnlock[]
   //notifications        Notification[]
 
   @@map("users")
@@ -119,7 +120,8 @@ model AnfitrioneImage {
   isVisible     Boolean  @default(true)
   createdAt     DateTime @default(now())
 
-  profile AnfitrioneProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile      AnfitrioneProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  imageUnlocks ImageUnlock[]
 
   @@map("anfitrione_images")
 }
@@ -288,6 +290,7 @@ model Transaction {
   wallet         Wallet          @relation(fields: [walletId], references: [id], onDelete: Cascade)
   depositRequest DepositRequest? @relation(fields: [depositRequestId], references: [id])
   messageUnlock  MessageUnlock?
+  imageUnlock    ImageUnlock?
 
   @@map("transactions")
 }
@@ -323,6 +326,23 @@ model MessageUnlock {
   @@unique([messageId, userId]) // un usuario desbloquea cada mensaje solo 1 vez
   @@map("message_unlocks")
 }
+// REGISTRO DE IMÁGENES DESBLOQUEADAS POR USUARIOS (patrón idéntico a MessageUnlock)
+model ImageUnlock {
+  id            String   @id @default(uuid())
+  imageId       String
+  userId        String   // el cliente que pagó
+  creditsSpent  Int
+  transactionId String?  @unique
+  unlockedAt    DateTime @default(now())
+
+  image       AnfitrioneImage @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id])
+  transaction Transaction?    @relation(fields: [transactionId], references: [id])
+
+  @@unique([imageId, userId]) // un cliente desbloquea cada imagen solo 1 vez
+  @@map("image_unlocks")
+}
+
 model Banks {
   name         String
   logo_url     String
@@ -369,10 +389,11 @@ model WithdrawalRequest {
 }
 
 enum TransactionType {
-  DEPOSIT // Entrada de dinero (Recarga)
-  WITHDRAWAL // Salida (Pago a anfitriona, suscripción, etc.)
+  DEPOSIT        // Entrada de dinero (Recarga)
+  WITHDRAWAL     // Salida (retiro de anfitriona)
   MESSAGE_UNLOCK // Pago para desbloquear un mensaje
-  EARNING // Crédito recibido por la anfitriona
+  IMAGE_UNLOCK   // Pago para desbloquear una imagen premium
+  EARNING        // Crédito recibido por la anfitriona
 }
 
 enum ServiceType {

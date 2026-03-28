@@ -19,6 +19,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { CallsModule } from './calls/calls.module';
 import { PaymentRequestModule } from './admin/paymentRequest/payment-request.module';
 import { StatsModule } from './admin/stats/stats.module';
+import { CulqiModule } from './culqi/culqi.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { StatsModule } from './admin/stats/stats.module';
     CallsModule,
     PaymentRequestModule,
     StatsModule,
+    CulqiModule,
   ],
   controllers: [],
   providers: [],

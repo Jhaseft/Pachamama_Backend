@@ -4,10 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class WalletService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async getMyEarnings(userId: string) {
     const wallet = await this.prisma.wallet.upsert({
@@ -202,6 +206,28 @@ export class WalletService {
       where: { id: (request as any).id },
       include: { bankAccount: { include: { bank: true } } },
     });
+
+    // Notificar a todos los admins
+    const [anfitriona, admins] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { firstName: true, lastName: true },
+      }),
+      this.prisma.user.findMany({
+        where: { role: 'ADMIN', isActive: true, fcmToken: { not: null } },
+        select: { fcmToken: true },
+      }),
+    ]);
+
+    const anfitrionaName = [anfitriona?.firstName, anfitriona?.lastName].filter(Boolean).join(' ') || 'Una anfitriona';
+    const adminTokens = admins.map(a => a.fcmToken!);
+
+    this.notificationsService.sendMulticastNotification(
+      adminTokens,
+      '💸 Nueva solicitud de retiro',
+      `${anfitrionaName} solicitó un retiro de ${dto.credits} créditos (S/ ${soles.toFixed(2)})`,
+      { withdrawalRequestId: (request as any).id, type: 'NEW_WITHDRAWAL_REQUEST' }
+    );
 
     return {
       id: created!.id,

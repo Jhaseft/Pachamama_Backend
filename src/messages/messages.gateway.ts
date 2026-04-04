@@ -189,8 +189,13 @@ export class MessagesGateway {
     // Limpiar intervalo de advertencia
     if (session?.warningInterval) clearInterval(session.warningInterval);
 
-    // Notificar al otro lado que la llamada terminó
-    this.server.to(`user_${data.otherUserId}`).emit('call_ended', { callId: data.callId });
+    // Notificar a ambos participantes usando los IDs del session map
+    if (session) {
+      this.server.to(`user_${session.callerId}`).emit('call_ended', { callId: data.callId });
+      this.server.to(`user_${session.anfitrionaId}`).emit('call_ended', { callId: data.callId });
+    } else {
+      this.server.to(`user_${data.otherUserId}`).emit('call_ended', { callId: data.callId });
+    }
 
     // Facturar si la llamada efectivamente conectó
     if (session?.startedAt) {

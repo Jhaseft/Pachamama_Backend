@@ -1,18 +1,23 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as admin from 'firebase-admin';
-import * as path from 'path';
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
     onModuleInit() {
         if (!admin.apps.length) {
-            const serviceAccountPath = path.join(process.cwd(), 'firebase-auth.json');
             try {
+                const base64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+                if (!base64) {
+                    console.warn('⚠️  FIREBASE_SERVICE_ACCOUNT_BASE64 no configurado. Las notificaciones push estarán deshabilitadas.');
+                    return;
+                }
+                const serviceAccount = JSON.parse(Buffer.from(base64, 'base64').toString('utf8'));
                 admin.initializeApp({
-                    credential: admin.credential.cert(require(serviceAccountPath)),
+                    credential: admin.credential.cert(serviceAccount),
                 });
+                console.log(`✅ Firebase inicializado correctamente. Proyecto: ${serviceAccount.project_id}`);
             } catch {
-                console.warn('⚠️  firebase-auth.json no encontrado. Las notificaciones push estarán deshabilitadas.');
+                console.warn('⚠️  Error inicializando Firebase. Las notificaciones push estarán deshabilitadas.');
             }
         }
     }

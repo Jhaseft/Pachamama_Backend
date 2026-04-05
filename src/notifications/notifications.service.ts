@@ -1,41 +1,29 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as admin from 'firebase-admin';
-import * as path from 'path';
+import { PrismaService } from '../prisma.service';
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
+    constructor(private readonly prisma: PrismaService) {}
     onModuleInit() {
         if (!admin.apps.length) {
             try {
-                console.log('🔥 Inicializando Firebase...');
-
-                if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-                    console.log('📦 Usando credenciales desde ENV');
-
-                    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-
-                    admin.initializeApp({
-                        credential: admin.credential.cert(serviceAccount),
-                    });
-                } else {
-                    const serviceAccountPath = path.join(process.cwd(), 'dist', 'firebase-auth.json');
-
-                    console.log('📂 Usando archivo:', serviceAccountPath);
-
-                    const serviceAccount = require(serviceAccountPath);
-
-                    admin.initializeApp({
-                        credential: admin.credential.cert(serviceAccount),
-                    });
+                const base64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+                if (!base64) {
+                    console.warn('⚠️  FIREBASE_SERVICE_ACCOUNT_BASE64 no configurado. Las notificaciones push estarán deshabilitadas.');
+                    return;
                 }
-
-                console.log('✅ Firebase inicializado correctamente');
-            } catch (error) {
-                console.error('🔥 ERROR INICIALIZANDO FIREBASE:', error);
-                console.warn('⚠️ Firebase deshabilitado');
+                const serviceAccount = JSON.parse(Buffer.from(base64, 'base64').toString('utf8'));
+                admin.initializeApp({
+                    credential: admin.credential.cert(serviceAccount),
+                });
+                console.log(`✅ Firebase inicializado correctamente. Proyecto: ${serviceAccount.project_id}`);
+            } catch {
+                console.warn('⚠️  Error inicializando Firebase. Las notificaciones push estarán deshabilitadas.');
             }
         }
     }
+    
 
     async sendMulticastNotification(tokens: string[], title: string, body: string, data?: any) {
         if (!admin.apps.length) {
@@ -43,8 +31,9 @@ export class NotificationsService implements OnModuleInit {
             return;
         }
 
-        if (!tokens.length) {
-            console.warn('⚠️ No hay tokens para enviar');
+        const validTokens = tokens.filter(t => t && t.trim().length > 0);
+        if (!validTokens.length) {
+            console.warn('⚠️ No hay tokens válidos para enviar');
             return;
         }
 
@@ -53,8 +42,8 @@ export class NotificationsService implements OnModuleInit {
             : {};
 
         const chunks: string[][] = [];
-        for (let i = 0; i < tokens.length; i += 500) {
-            chunks.push(tokens.slice(i, i + 500));
+        for (let i = 0; i < validTokens.length; i += 500) {
+            chunks.push(validTokens.slice(i, i + 500));
         }
 
         for (const chunk of chunks) {
@@ -74,9 +63,16 @@ export class NotificationsService implements OnModuleInit {
                     failed: response.failureCount,
                 });
 
-                if (response.failureCount > 0) {
-                    console.warn('⚠️ Tokens fallidos:', response.responses);
-                }
+                // Limpiar tokens obsoletos de la DB
+                response.responses.forEach((resp, idx) => {
+                    if (!resp.success && resp.error?.code === 'messaging/registration-token-not-registered') {
+                        const invalidToken = chunk[idx];
+                        this.prisma.user.updateMany({
+                            where: { fcmToken: invalidToken },
+                            data: { fcmToken: null },
+                        }).catch(() => {});
+                    }
+                });
             } catch (error) {
                 console.error('🔥 Error enviando multicast:', error);
             }

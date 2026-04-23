@@ -96,6 +96,25 @@ export class MessagesService {
     });
 
     if (!senderProfile) {
+      // Control anti-spam: máximo SPAM_LIMIT mensajes consecutivos sin respuesta de la anfitriona
+      const spamLimit = Number(process.env.SPAM_LIMIT ?? 5);
+      const recentMessages = await this.prisma.message.findMany({
+        where: { conversationId: conversation.id },
+        orderBy: { createdAt: 'desc' },
+        select: { senderId: true },
+        take: spamLimit,
+      });
+      let consecutive = 0;
+      for (const msg of recentMessages) {
+        if (msg.senderId === senderId) consecutive++;
+        else break;
+      }
+      if (consecutive >= spamLimit) {
+        throw new BadRequestException(
+          `Has enviado ${spamLimit} mensajes consecutivos sin respuesta. Espera a que la anfitriona te responda.`,
+        );
+      }
+
       // Es un cliente enviando mensaje → cobrar si la anfitriona tiene precio configurado
       const sendPrice = await this.servicePricesService.getPriceForUser(
         receiverId,

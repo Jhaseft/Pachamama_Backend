@@ -18,6 +18,7 @@ model User {
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
   lastLogin            DateTime?
+  lastActiveAt         DateTime?
   role                 UserRole             @default(USER)
   resetPasswordExpiry  DateTime?
   resetPasswordToken   String?

@@ -513,6 +513,7 @@ export class MessagesService {
           select: {
             firstName: true,
             lastName: true,
+            lastActiveAt: true,
             anfitrionaProfile: { select: { avatarUrl: true, username: true } },
           },
         },
@@ -520,6 +521,7 @@ export class MessagesService {
           select: {
             firstName: true,
             lastName: true,
+            lastActiveAt: true,
             anfitrionaProfile: { select: { avatarUrl: true, username: true } },
           },
         },
@@ -551,6 +553,7 @@ export class MessagesService {
           otherUserId,
           otherUserName,
           otherUserAvatar: otherUser.anfitrionaProfile?.avatarUrl ?? null,
+          otherUserLastActiveAt: otherUser.lastActiveAt?.toISOString() ?? null,
           // Preview del último mensaje estilo WhatsApp
           lastMessage: lastMessage?.imageUrl
             ? lastMessage.isLocked ? '📷 Foto · 🔒' : '📷 Foto'

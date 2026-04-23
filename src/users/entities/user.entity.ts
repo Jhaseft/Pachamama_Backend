@@ -12,6 +12,7 @@ export class UserEntity implements User {
   createdAt: Date;
   updatedAt: Date;
   lastLogin: Date | null;
+  lastActiveAt: Date | null;
 
   isActive: boolean;
 

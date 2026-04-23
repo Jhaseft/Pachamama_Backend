@@ -260,6 +260,7 @@ export class AuthService {
 
   private generateTokenResponse(user: Omit<User, 'password'>) {
     this.usersService.updateLastLogin(user.id);
+    this.usersService.updateLastActive(user.id);
 
     const payload = {
       sub: user.id,

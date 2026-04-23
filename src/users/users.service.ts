@@ -181,6 +181,13 @@ export class UsersService {
     });
   }
 
+  async updateLastActive(id: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id },
+      data: { lastActiveAt: new Date() },
+    });
+  }
+
   //OBTENER LA WALLET DEL USUARIO, ANFITRIONA O ADMIN
   async findWalletByUserId(userId: string) {
     const wallet = await this.prisma.wallet.findUnique({

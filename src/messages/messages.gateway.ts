@@ -4,6 +4,7 @@ import {
   SubscribeMessage,
   MessageBody,
   ConnectedSocket,
+  OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { MessagesService } from './messages.service';
@@ -24,11 +25,13 @@ interface CallSession {
     origin: '*',
   },
 })
-export class MessagesGateway {
+export class MessagesGateway implements OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
   private readonly callSessions = new Map<string, CallSession>();
+  // socketId → userId
+  private readonly presenceMap = new Map<string, string>();
 
   constructor(
     private readonly messagesService: MessagesService,
@@ -38,12 +41,70 @@ export class MessagesGateway {
   ) {}
 
   @SubscribeMessage('register')
-  handleRegister(
+  async handleRegister(
     @MessageBody() userId: string,
     @ConnectedSocket() client: Socket,
   ) {
     client.join(`user_${userId}`);
-    console.log(`Usuario ${userId} conectado`);
+    this.presenceMap.set(client.id, userId);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { lastActiveAt: new Date() },
+    });
+
+    await this.emitPresenceToConversationPartners(userId, true, new Date());
+  }
+
+  async handleDisconnect(client: Socket) {
+    const userId = this.presenceMap.get(client.id);
+    if (!userId) return;
+
+    this.presenceMap.delete(client.id);
+
+    // If the user has more active connections, don't mark them offline
+    const stillConnected = Array.from(this.presenceMap.values()).some(
+      (id) => id === userId,
+    );
+    if (stillConnected) return;
+
+    // Do NOT update lastActiveAt here — closing the app is not user activity.
+    // Read the last recorded value to pass it in the presence event.
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { lastActiveAt: true },
+    });
+
+    await this.emitPresenceToConversationPartners(
+      userId,
+      false,
+      user?.lastActiveAt ?? new Date(),
+    );
+  }
+
+  private async emitPresenceToConversationPartners(
+    userId: string,
+    isOnline: boolean,
+    lastActiveAt: Date,
+  ) {
+    const conversations = await this.prisma.conversation.findMany({
+      where: { OR: [{ user1Id: userId }, { user2Id: userId }] },
+      select: { user1Id: true, user2Id: true },
+    });
+
+    const partnerIds = conversations.map((c) =>
+      c.user1Id === userId ? c.user2Id : c.user1Id,
+    );
+
+    const payload = {
+      userId,
+      isOnline,
+      lastActiveAt: lastActiveAt.toISOString(),
+    };
+
+    for (const partnerId of partnerIds) {
+      this.server.to(`user_${partnerId}`).emit('user_presence', payload);
+    }
   }
 
   @SubscribeMessage('send_message')
@@ -57,6 +118,14 @@ export class MessagesGateway {
       data.text ?? null,
       data.isLocked ?? false,
     );
+
+    // Sending a message is explicit user activity
+    const now = new Date();
+    await this.prisma.user.update({
+      where: { id: data.senderId },
+      data: { lastActiveAt: now },
+    });
+    await this.emitPresenceToConversationPartners(data.senderId, true, now);
 
     this.sendMessageToUser(data.receiverId, message);
     client.emit('message_sent', message);

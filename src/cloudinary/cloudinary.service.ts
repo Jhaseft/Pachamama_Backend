@@ -485,6 +485,36 @@ export class CloudinaryService {
     });
   }
 
+  // subir imagen chat
+  async uploadChatImage(params: {
+    file: Express.Multer.File;
+    senderId: string;
+  }): Promise<{ secureUrl: string; publicId: string }> {
+    const { file, senderId } = params;
+
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Solo se permiten imágenes en el chat.');
+    }
+
+    const folder = `pachamama/chats/${senderId}`;
+    const publicId = `chat_img_${Date.now()}`;
+
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { folder, public_id: publicId, resource_type: 'image' },
+        (error, result) => {
+          if (error || !result?.secure_url) {
+            return reject(
+              new InternalServerErrorException('Error al subir imagen de chat a Cloudinary.'),
+            );
+          }
+          resolve({ secureUrl: result.secure_url, publicId: result.public_id });
+        },
+      );
+      uploadStream.end(file.buffer);
+    });
+  }
+
   async deleteGalleryImage(publicId: string): Promise<void> {
     try {
       await cloudinary.uploader.destroy(publicId, { invalidate: true, resource_type: 'image' });

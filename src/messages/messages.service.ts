@@ -42,9 +42,23 @@ export class MessagesService {
   async createMessage(
     senderId: string,
     receiverId: string,
-    text: string,
+    text: string | null,
     isLocked: boolean = false,
+    // Campos opcionales para imágenes de chat
+    imageUrl?: string,
+    imagePublicId?: string,
+    price?: number,
   ) {
+    // Validar que el mensaje tenga al menos texto o imagen
+    if (!text && !imageUrl) {
+      throw new BadRequestException('El mensaje debe tener texto o imagen');
+    }
+
+    // Si es imagen bloqueada, el precio lo define la anfitriona al enviar
+    if (imageUrl && isLocked && !price) {
+      throw new BadRequestException('Debes definir un precio para la imagen bloqueada');
+    }
+
     const [user1Id, user2Id] = [senderId, receiverId].sort();
 
     const conversation = await this.prisma.conversation.upsert({
@@ -53,9 +67,11 @@ export class MessagesService {
       update: {},
     });
 
-    let price: number | null = null;
+    // Para mensajes de texto bloqueados (regalos), el precio viene de ServicePrice
+    // Para imágenes bloqueadas, el precio viene directo del parámetro
+    let resolvedPrice: number | null = null;
 
-    if (isLocked) {
+    if (isLocked && !imageUrl) {
       const servicePrice = await this.servicePricesService.getPriceForUser(
         senderId,
         ServiceType.MESSAGE,
@@ -65,7 +81,11 @@ export class MessagesService {
           'Debes configurar un precio para regalos antes de usarlos',
         );
       }
-      price = servicePrice.price;
+      resolvedPrice = servicePrice.price;
+    }
+
+    if (isLocked && imageUrl) {
+      resolvedPrice = price!;
     }
 
     // ── Cobro por enviar mensaje (MESSAGE_SEND) ──────────────────────────────
@@ -159,9 +179,11 @@ export class MessagesService {
       data: {
         conversationId: conversation.id,
         senderId,
-        text,
+        text: text || null,
+        imageUrl: imageUrl || null,
+        imagePublicId: imagePublicId || null,
         isLocked,
-        price,
+        price: resolvedPrice,
       },
     });
 
@@ -172,7 +194,22 @@ export class MessagesService {
     });
 
     if (receiver?.fcmToken) {
-      if (isLocked) {
+      // Notificación según tipo de mensaje
+      if (imageUrl && isLocked) {
+        this.notificationsService.sendPushNotification(
+          receiver.fcmToken,
+          '📷 Nueva foto bloqueada',
+          'Tienes una foto esperándote · desbloquéala con créditos',
+          { conversationId: conversation.id, type: 'NEW_LOCKED_IMAGE' }
+        );
+      } else if (imageUrl) {
+        this.notificationsService.sendPushNotification(
+          receiver.fcmToken,
+          '📷 Nueva foto',
+          'Te enviaron una foto',
+          { conversationId: conversation.id, type: 'NEW_IMAGE' }
+        );
+      } else if (isLocked) {
         this.notificationsService.sendPushNotification(
           receiver.fcmToken,
           '🎁 Nuevo regalo',
@@ -201,23 +238,41 @@ export class MessagesService {
           where: { userId: requestingUserId },
           select: { id: true },
         },
+        // Verificar si el usuario ya desbloqueó la imagen de este mensaje
+        messageImageUnlocks: {
+          where: { userId: requestingUserId },
+          select: { id: true },
+        },
       },
     });
 
     return messages.map((msg) => {
-      const isUnlocked = msg.messageUnlocks.length > 0;
+      const isTextUnlocked = msg.messageUnlocks.length > 0;
+      const isImageUnlocked = msg.messageImageUnlocks.length > 0;
       const isSender = msg.senderId === requestingUserId;
+
+      // El sender siempre ve su contenido; el receptor solo si pagó o es gratis
+      const canSeeContent = isSender || !msg.isLocked || isTextUnlocked || isImageUnlocked;
+
+      // Generar URL borrosa para imágenes bloqueadas no desbloqueadas
+      // Cloudinary aplica la transformación al vuelo sin exponer la URL original
+      const getImageUrl = () => {
+        if (!msg.imageUrl) return null;
+        if (!msg.isLocked || canSeeContent) return msg.imageUrl;
+        // e_blur:1000 = blur máximo, q_10 = calidad 10% para que no se pueda recuperar
+        return msg.imageUrl.replace('/upload/', '/upload/e_blur:2000,q_5/');
+      };
 
       return {
         id: msg.id,
         conversationId: msg.conversationId,
         senderId: msg.senderId,
-        // El emisor siempre ve su propio texto; el receptor solo si pagó o es gratis
-        text: isSender || !msg.isLocked || isUnlocked ? msg.text : null,
+        text: canSeeContent ? msg.text : null,
+        imageUrl: getImageUrl(),
         read: msg.read,
         isLocked: msg.isLocked,
         price: msg.price,
-        isUnlocked,
+        isUnlocked: isTextUnlocked || isImageUnlocked,
         createdAt: msg.createdAt,
       };
     });
@@ -343,6 +398,105 @@ export class MessagesService {
     return { success: true, text: message.text };
   }
 
+  // ── Desbloqueo de imagen de chat ──────────────────────────────────────────
+  // Mismo patrón atómico que unlockMessage pero registra en MessageImageUnlock
+  async unlockChatImage(messageId: string, userId: string) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: {
+        sender: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    if (!message) throw new NotFoundException('Mensaje no encontrado');
+    if (!message.imageUrl) throw new BadRequestException('Este mensaje no contiene una imagen');
+    if (!message.isLocked) throw new BadRequestException('Esta imagen no está bloqueada');
+    if (message.senderId === userId) throw new BadRequestException('No puedes desbloquear tu propia imagen');
+
+    // Idempotencia: si ya desbloquó esta imagen, devolver la URL sin cobrar
+    const existing = await this.prisma.messageImageUnlock.findUnique({
+      where: { messageId_userId: { messageId, userId } },
+    });
+    if (existing) return { alreadyUnlocked: true, imageUrl: message.imageUrl };
+
+    const creditsRequired = message.price!;
+
+    // Verificar saldo del cliente
+    const clientWallet = await this.prisma.wallet.findUnique({ where: { userId } });
+    if (!clientWallet) throw new NotFoundException('Wallet no encontrada');
+    if (Number(clientWallet.balance) < creditsRequired) {
+      throw new BadRequestException('Créditos insuficientes');
+    }
+
+    // Wallet de la anfitriona que cobra
+    const anfitrionaWallet = await this.prisma.wallet.findUnique({
+      where: { userId: message.senderId },
+    });
+    if (!anfitrionaWallet) throw new NotFoundException('Wallet de anfitriona no encontrada');
+
+    const client = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true },
+    });
+    const clientName = [client?.firstName, client?.lastName].filter(Boolean).join(' ') || 'Cliente';
+
+    // Transacción atómica: débito cliente + crédito anfitriona (sin comisión)
+    const [, clientTx] = await this.prisma.$transaction([
+      this.prisma.wallet.update({
+        where: { userId },
+        data: { balance: { decrement: creditsRequired } },
+      }),
+      this.prisma.transaction.create({
+        data: {
+          walletId: clientWallet.id,
+          type: 'CHAT_IMAGE_UNLOCK',
+          amount: creditsRequired,
+          description: 'Desbloqueo de imagen de chat',
+        },
+      }),
+      this.prisma.wallet.update({
+        where: { userId: message.senderId },
+        data: { balance: { increment: creditsRequired } },
+      }),
+      this.prisma.transaction.create({
+        data: {
+          walletId: anfitrionaWallet.id,
+          type: 'EARNING',
+          amount: creditsRequired,
+          description: JSON.stringify({ service: 'Imagen de chat desbloqueada', clientName }),
+        },
+      }),
+    ]);
+
+    // Registrar el desbloqueo guardando la imageUrl para que el cliente
+    // siempre pueda acceder a su imagen aunque el mensaje expire
+    await this.prisma.messageImageUnlock.create({
+      data: {
+        messageId,
+        userId,
+        imageUrl: message.imageUrl!,
+        creditsSpent: creditsRequired,
+        transactionId: clientTx.id,
+      },
+    });
+
+    // Notificar a la anfitriona
+    const anfitriona = await this.prisma.user.findUnique({
+      where: { id: message.senderId },
+      select: { fcmToken: true },
+    });
+    if (anfitriona?.fcmToken) {
+      this.notificationsService.sendPushNotification(
+        anfitriona.fcmToken,
+        '💰 Imagen desbloqueada',
+        `${clientName} desbloquó tu foto · ganaste ${creditsRequired} créditos`,
+        { conversationId: message.conversationId, type: 'CHAT_IMAGE_UNLOCKED' }
+      );
+    }
+
+    return { alreadyUnlocked: false, imageUrl: message.imageUrl };
+  }
+
   async getChats(userId: string) {
     const cutoff = this.ttlCutoff();
     const conversations = await this.prisma.conversation.findMany({
@@ -397,7 +551,11 @@ export class MessagesService {
           otherUserId,
           otherUserName,
           otherUserAvatar: otherUser.anfitrionaProfile?.avatarUrl ?? null,
-          lastMessage: lastMessage?.isLocked ? '🔒 Mensaje bloqueado' : (lastMessage?.text ?? null),
+          // Preview del último mensaje estilo WhatsApp
+          lastMessage: lastMessage?.imageUrl
+            ? lastMessage.isLocked ? '📷 Foto · 🔒' : '📷 Foto'
+            : lastMessage?.isLocked ? '🔒 Mensaje bloqueado'
+            : (lastMessage?.text ?? null),
           lastMessageAt: lastMessage?.createdAt ?? conv.createdAt,
           unreadCount,
         };
@@ -409,6 +567,23 @@ export class MessagesService {
       if (a.unreadCount === 0 && b.unreadCount > 0) return 1;
       return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
     });
+  }
+
+  // Galería de imágenes desbloqueadas del cliente
+  // Funciona aunque los mensajes originales hayan expirado
+  async getMyUnlockedImages(userId: string) {
+    const unlocks = await this.prisma.messageImageUnlock.findMany({
+      where: { userId },
+      orderBy: { unlockedAt: 'desc' },
+      select: {
+        id: true,
+        imageUrl: true,
+        creditsSpent: true,
+        unlockedAt: true,
+      },
+    });
+
+    return unlocks;
   }
 
   async markAsRead(conversationId: string, userId: string) {

@@ -48,13 +48,13 @@ export class MessagesGateway {
 
   @SubscribeMessage('send_message')
   async handleMessage(
-    @MessageBody() data: { senderId: string; receiverId: string; text: string; isLocked?: boolean },
+    @MessageBody() data: { senderId: string; receiverId: string; text?: string; imageUrl?: string; isLocked?: boolean },
     @ConnectedSocket() client: Socket,
   ) {
     const message = await this.messagesService.createMessage(
       data.senderId,
       data.receiverId,
-      data.text,
+      data.text ?? null,
       data.isLocked ?? false,
     );
 

@@ -200,14 +200,14 @@ export class MessagesService {
           receiver.fcmToken,
           '📷 Nueva foto bloqueada',
           'Tienes una foto esperándote · desbloquéala con créditos',
-          { conversationId: conversation.id, type: 'NEW_LOCKED_IMAGE' }
+          { conversationId: conversation.id, type: 'NEW_LOCKED_MESSAGE' }
         );
       } else if (imageUrl) {
         this.notificationsService.sendPushNotification(
           receiver.fcmToken,
           '📷 Nueva foto',
           'Te enviaron una foto',
-          { conversationId: conversation.id, type: 'NEW_IMAGE' }
+          { conversationId: conversation.id, type: 'NEW_MESSAGE' }
         );
       } else if (isLocked) {
         this.notificationsService.sendPushNotification(
@@ -490,7 +490,7 @@ export class MessagesService {
         anfitriona.fcmToken,
         '💰 Imagen desbloqueada',
         `${clientName} desbloquó tu foto · ganaste ${creditsRequired} créditos`,
-        { conversationId: message.conversationId, type: 'CHAT_IMAGE_UNLOCKED' }
+        { conversationId: message.conversationId, type: 'IMAGE_UNLOCKED' }
       );
     }
 

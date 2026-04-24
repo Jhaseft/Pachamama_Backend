@@ -99,28 +99,64 @@ export class WalletService {
 
     return accounts.map((a) => ({
       id: a.id.toString(),
-      bankId: a.bankId,
-      bankName: a.bank.name,
-      bankLogoUrl: a.bank.logo_url,
-      accountNumber: a.accountNumber,
-      accountHolderName: a.accountHolderName,
+      type: a.type,
+      bankId: a.bankId ?? null,
+      bankName: a.bank?.name ?? null,
+      bankLogoUrl: a.bank?.logo_url ?? null,
+      accountNumber: a.accountNumber ?? null,
+      paypalEmail: a.paypalEmail ?? null,
+      accountHolderName: a.accountHolderName ?? null,
     }));
   }
 
   async addBankAccount(
     userId: string,
-    dto: { bankId: number; accountNumber: string; accountHolderName?: string },
+    dto: {
+      type: 'BCP' | 'OTHER_BANK' | 'PAYPAL';
+      bankId?: number;
+      accountNumber?: string;
+      paypalEmail?: string;
+      accountHolderName?: string;
+    },
   ) {
-    const profile = await this.prisma.anfitrioneProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) {
-      throw new NotFoundException('Perfil de anfitriona no encontrado');
+    const profile = await this.prisma.anfitrioneProfile.findUnique({ where: { userId } });
+    if (!profile) throw new NotFoundException('Perfil de anfitriona no encontrado');
+
+    if (dto.type === 'PAYPAL') {
+      if (!dto.paypalEmail) throw new BadRequestException('El email de PayPal es requerido');
+      const account = await this.prisma.bankAccount.create({
+        data: {
+          userId,
+          type: 'PAYPAL',
+          anfitrionaProfileId: profile.id,
+          paypalEmail: dto.paypalEmail,
+          accountHolderName: dto.accountHolderName,
+        },
+      });
+      return {
+        id: account.id.toString(),
+        type: account.type,
+        bankId: null,
+        bankName: null,
+        bankLogoUrl: null,
+        accountNumber: null,
+        paypalEmail: account.paypalEmail,
+        accountHolderName: account.accountHolderName,
+      };
+    }
+
+    // BCP o OTHER_BANK — requieren banco y número de cuenta / CCI
+    if (!dto.bankId) throw new BadRequestException('El banco es requerido');
+    if (!dto.accountNumber) {
+      throw new BadRequestException(
+        dto.type === 'BCP' ? 'El número de cuenta es requerido' : 'El CCI es requerido',
+      );
     }
 
     const account = await this.prisma.bankAccount.create({
       data: {
         userId,
+        type: dto.type,
         bankId: dto.bankId,
         anfitrionaProfileId: profile.id,
         accountNumber: dto.accountNumber,
@@ -131,10 +167,12 @@ export class WalletService {
 
     return {
       id: account.id.toString(),
+      type: account.type,
       bankId: account.bankId,
-      bankName: account.bank.name,
-      bankLogoUrl: account.bank.logo_url,
+      bankName: account.bank!.name,
+      bankLogoUrl: account.bank!.logo_url,
       accountNumber: account.accountNumber,
+      paypalEmail: null,
       accountHolderName: account.accountHolderName,
     };
   }
@@ -143,9 +181,7 @@ export class WalletService {
     const account = await this.prisma.bankAccount.findFirst({
       where: { id: BigInt(accountId), userId },
     });
-    if (!account) {
-      throw new NotFoundException('Cuenta bancaria no encontrada');
-    }
+    if (!account) throw new NotFoundException('Cuenta bancaria no encontrada');
     await this.prisma.bankAccount.delete({ where: { id: BigInt(accountId) } });
     return { message: 'Cuenta eliminada' };
   }
@@ -158,11 +194,12 @@ export class WalletService {
       throw new BadRequestException('El monto debe ser mayor a 0');
     }
 
-    const minCredits = Number(this.config.get<string>('MIN_WITHDRAWAL_CREDITS') ?? '50');
+    const minUsd = Number(this.config.get<string>('MIN_WITHDRAWAL_USD') ?? '50');
+    const creditsPerUsd = Number(this.config.get<string>('CREDITS_PER_USD') ?? '4');
+    const minCredits = minUsd * creditsPerUsd;
     if (dto.credits < minCredits) {
-      const RATE = Number(this.config.get<string>('CREDIT_TO_SOLES_RATE') ?? '0.90');
       throw new BadRequestException(
-        `El retiro mínimo es de ${minCredits} créditos (S/ ${(minCredits * RATE).toFixed(2)})`,
+        `El retiro mínimo es de USD ${minUsd} (${minCredits} créditos)`,
       );
     }
 
@@ -182,8 +219,12 @@ export class WalletService {
       throw new NotFoundException('Cuenta bancaria no encontrada');
     }
 
-    const RATE = Number(this.config.get<string>('CREDIT_TO_SOLES_RATE') ?? '0.90');
-    const soles = dto.credits * RATE;
+    const isPaypal = bankAccount.type === 'PAYPAL';
+    const payoutCurrency = isPaypal ? 'USD' : 'PEN';
+    const rate = isPaypal
+      ? Number(this.config.get<string>('CREDIT_TO_USD_RATE') ?? '0.25')
+      : Number(this.config.get<string>('CREDIT_TO_SOLES_RATE') ?? '1');
+    const soles = dto.credits * rate; // campo reutilizado: contiene USD para PayPal
 
     const [, , request] = await this.prisma.$transaction([
       // Descontar créditos de la wallet
@@ -207,6 +248,7 @@ export class WalletService {
           bankAccountId: BigInt(dto.bankAccountId),
           credits: dto.credits,
           soles,
+          payoutCurrency,
           status: 'PENDING',
         },
       }),
@@ -216,6 +258,7 @@ export class WalletService {
       where: { id: (request as any).id },
       include: { bankAccount: { include: { bank: true } } },
     });
+
 
     // Notificar a todos los admins
     const [anfitriona, admins] = await Promise.all([
@@ -239,13 +282,17 @@ export class WalletService {
       { withdrawalRequestId: (request as any).id, type: 'NEW_WITHDRAWAL_REQUEST' }
     );
 
+    const acc = created!.bankAccount;
     return {
       id: created!.id,
       credits: Number(created!.credits),
-      soles: Number(created!.soles),
+      payoutAmount: Number(created!.soles),
+      payoutCurrency: created!.payoutCurrency,
       status: created!.status,
-      bankName: created!.bankAccount.bank.name,
-      accountNumber: created!.bankAccount.accountNumber,
+      methodType: acc.type,
+      bankName: acc.bank?.name ?? null,
+      accountNumber: acc.accountNumber ?? null,
+      paypalEmail: acc.paypalEmail ?? null,
       createdAt: created!.createdAt,
     };
   }
@@ -260,16 +307,23 @@ export class WalletService {
       orderBy: { createdAt: 'desc' },
     });
 
-    return requests.map((r) => ({
-      id: r.id,
-      credits: Number(r.credits),
-      soles: Number(r.soles),
-      status: r.status,
-      bankName: r.bankAccount.bank.name,
-      accountNumber: r.bankAccount.accountNumber,
-      rejectionReason: r.rejectionReason ?? null,
-      receiptUrl: r.receiptUrl ?? null,
-      createdAt: r.createdAt,
-    }));
+
+    return requests.map((r) => {
+      const acc = r.bankAccount;
+      return {
+        id: r.id,
+        credits: Number(r.credits),
+        payoutAmount: Number(r.soles),
+        payoutCurrency: r.payoutCurrency,
+        status: r.status,
+        methodType: acc.type,
+        bankName: acc.bank?.name ?? null,
+        accountNumber: acc.accountNumber ?? null,
+        paypalEmail: acc.paypalEmail ?? null,
+        rejectionReason: r.rejectionReason ?? null,
+        receiptUrl: r.receiptUrl ?? null,
+        createdAt: r.createdAt,
+      };
+    });
   }
 }

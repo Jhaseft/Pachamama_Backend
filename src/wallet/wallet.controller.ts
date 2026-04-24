@@ -39,7 +39,13 @@ export class WalletController {
   @Post('me/bank-accounts')
   addBankAccount(
     @CurrentUser() user: JwtUser,
-    @Body() body: { bankId: number; accountNumber: string; accountHolderName?: string },
+    @Body() body: {
+      type: 'BCP' | 'OTHER_BANK' | 'PAYPAL';
+      bankId?: number;
+      accountNumber?: string;
+      paypalEmail?: string;
+      accountHolderName?: string;
+    },
   ) {
     return this.walletService.addBankAccount(user.userId, body);
   }

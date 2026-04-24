@@ -188,19 +188,23 @@ export class AnfitrionaService {
         }
 
         return {
-            data: requests.map(r => ({
-                id: r.id,
-                credits: Number(r.credits),
-                soles: Number(r.soles),
-                status: r.status,
-                bankName: r.bankAccount.bank.name,
-                accountNumber: r.bankAccount.accountNumber,
-                anfitriona: r.wallet.user,
-
-                currentBalance: Number(r.wallet.balance),
-
-                createdAt: r.createdAt,
-            })),
+            data: requests.map(r => {
+                const acc = r.bankAccount;
+                return {
+                    id: r.id,
+                    credits: Number(r.credits),
+                    payoutAmount: Number(r.soles),
+                    payoutCurrency: r.payoutCurrency,
+                    status: r.status,
+                    methodType: acc.type,
+                    bankName: acc.bank?.name ?? null,
+                    accountNumber: acc.accountNumber ?? null,
+                    paypalEmail: acc.paypalEmail ?? null,
+                    anfitriona: r.wallet.user,
+                    currentBalance: Number(r.wallet.balance),
+                    createdAt: r.createdAt,
+                };
+            }),
             nextCursor
         };
     }
@@ -309,17 +313,23 @@ export class AnfitrionaService {
         }
 
         return {
-            data: requests.map(r => ({
-                id: r.id,
-                credits: Number(r.credits),
-                soles: Number(r.soles),
-                status: r.status,
-                bankName: r.bankAccount.bank.name,
-                accountNumber: r.bankAccount.accountNumber,
-                anfitriona: r.wallet.user,
-                createdAt: r.createdAt,
-                updatedAt: r.updatedAt,
-            })),
+            data: requests.map(r => {
+                const acc = r.bankAccount;
+                return {
+                    id: r.id,
+                    credits: Number(r.credits),
+                    payoutAmount: Number(r.soles),
+                    payoutCurrency: r.payoutCurrency,
+                    status: r.status,
+                    methodType: acc.type,
+                    bankName: acc.bank?.name ?? null,
+                    accountNumber: acc.accountNumber ?? null,
+                    paypalEmail: acc.paypalEmail ?? null,
+                    anfitriona: r.wallet.user,
+                    createdAt: r.createdAt,
+                    updatedAt: r.updatedAt,
+                };
+            }),
             nextCursor
         };
     }

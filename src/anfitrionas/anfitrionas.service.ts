@@ -1129,6 +1129,60 @@ export class AnfitrioneService {
     };
   }
 
+  // ─── Clientes para anfitriona (HU: iniciar conversación con clientes) ────────
+
+  async getClientsForAnfitriona(
+    anfitrionaId: string,
+    cursor?: string,
+    limit = 20,
+  ): Promise<{ data: any[]; nextCursor: string | null }> {
+    const take = limit + 1;
+
+    const users = await this.prisma.user.findMany({
+      where: { role: 'USER', isActive: true },
+      orderBy: { createdAt: 'desc' },
+      take,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        lastActiveAt: true,
+        userProfile: { select: { avatarUrl: true } },
+        conversationsAsUser1: {
+          where: { user2Id: anfitrionaId },
+          select: { id: true },
+          take: 1,
+        },
+        conversationsAsUser2: {
+          where: { user1Id: anfitrionaId },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+
+    const hasMore = users.length > limit;
+    if (hasMore) users.pop();
+
+    const data = users.map((u) => {
+      const conv = u.conversationsAsUser1[0] ?? u.conversationsAsUser2[0] ?? null;
+      return {
+        id: u.id,
+        name: [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Cliente',
+        avatar: u.userProfile?.avatarUrl ?? null,
+        lastActiveAt: u.lastActiveAt?.toISOString() ?? null,
+        hasConversation: !!conv,
+        conversationId: conv?.id ?? null,
+      };
+    });
+
+    return {
+      data,
+      nextCursor: hasMore ? users[users.length - 1].id : null,
+    };
+  }
+
   private calculateAge(dateOfBirth: Date): number {
     const today = new Date();
     let age = today.getFullYear() - dateOfBirth.getFullYear();

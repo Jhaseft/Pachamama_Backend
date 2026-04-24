@@ -40,8 +40,14 @@ export class UsersController {
 
   @Get('config')
   getConfig() {
+    const penRate = Number(this.config.get<string>('CREDIT_TO_SOLES_RATE') ?? '1');
+    const usdRate = Number(this.config.get<string>('CREDIT_TO_USD_RATE') ?? '0.25');
     return {
-      creditToSolesRate: Number(this.config.get<string>('CREDIT_TO_SOLES_RATE') ?? '1'),
+      creditToSolesRate: penRate,
+      rates: {
+        PEN: { code: 'PEN', rate: penRate, symbol: 'S/', name: 'Soles' },
+        USD: { code: 'USD', rate: usdRate, symbol: 'US$', name: 'Dólares' },
+      },
       minVersion: this.config.get<string>('MIN_APP_VERSION') ?? '1.0',
     };
   }

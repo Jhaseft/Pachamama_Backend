@@ -158,6 +158,14 @@ export class WalletService {
       throw new BadRequestException('El monto debe ser mayor a 0');
     }
 
+    const minCredits = Number(this.config.get<string>('MIN_WITHDRAWAL_CREDITS') ?? '50');
+    if (dto.credits < minCredits) {
+      const RATE = Number(this.config.get<string>('CREDIT_TO_SOLES_RATE') ?? '0.90');
+      throw new BadRequestException(
+        `El retiro mínimo es de ${minCredits} créditos (S/ ${(minCredits * RATE).toFixed(2)})`,
+      );
+    }
+
     const wallet = await this.prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) {
       throw new NotFoundException('Wallet no encontrada');
@@ -259,6 +267,8 @@ export class WalletService {
       status: r.status,
       bankName: r.bankAccount.bank.name,
       accountNumber: r.bankAccount.accountNumber,
+      rejectionReason: r.rejectionReason ?? null,
+      receiptUrl: r.receiptUrl ?? null,
       createdAt: r.createdAt,
     }));
   }

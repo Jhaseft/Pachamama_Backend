@@ -5,7 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { AnfitrioneModule } from './anfitrionas/anfitrionas.module';
-
+import { PaypalModule } from './paypal/paypal.module';
 import { PackageModule } from './admin/package/package.module';
 import { ClientModule} from './admin/client/client.module';
 import { AnfitrionaModule } from './admin/anfitriona/anfitriona.module';
@@ -40,6 +40,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     CloudinaryModule,
     AnfitrioneModule,
     ChatsModule,
+    PaypalModule,
     MessagesModule,
     ServicePricesModule,
     RechargeRequestModule,

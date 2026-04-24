@@ -343,6 +343,26 @@ export class AnfitrioneController {
   }
 
   /**
+   * GET /anfitrionas/clients
+   * Lista de clientes registrados para que la anfitriona pueda iniciar conversación.
+   * Soporta cursor pagination: ?cursor=<lastId>&limit=20
+   */
+  @Get('clients')
+  @Roles(UserRole.ANFITRIONA)
+  getClients(
+    @Request() req,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const anfitrionaId: string = req.user?.id ?? req.user?.userId ?? req.user?.sub;
+    return this.service.getClientsForAnfitriona(
+      anfitrionaId,
+      cursor,
+      limit ? Number(limit) : 20,
+    );
+  }
+
+  /**
    * GET /anfitrionas/:id
    * Obtiene una anfitriona por su userId
    */

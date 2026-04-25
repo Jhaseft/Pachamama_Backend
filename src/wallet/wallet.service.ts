@@ -112,7 +112,7 @@ export class WalletService {
   async addBankAccount(
     userId: string,
     dto: {
-      type: 'BCP' | 'OTHER_BANK' | 'PAYPAL';
+      type: 'BCP' | 'OTHER_BANK' | 'PAYPAL' | 'BYBIT' | 'BINANCE';
       bankId?: number;
       accountNumber?: string;
       paypalEmail?: string;
@@ -145,8 +145,33 @@ export class WalletService {
       };
     }
 
+    if (dto.type === 'BYBIT' || dto.type === 'BINANCE') {
+      if (!dto.accountNumber) {
+        throw new BadRequestException(`El ID de ${dto.type === 'BYBIT' ? 'Bybit' : 'Binance'} es requerido`);
+      }
+      const account = await this.prisma.bankAccount.create({
+        data: {
+          userId,
+          type: dto.type,
+          anfitrionaProfileId: profile.id,
+          accountNumber: dto.accountNumber,
+          accountHolderName: dto.accountHolderName,
+        },
+      });
+      return {
+        id: account.id.toString(),
+        type: account.type,
+        bankId: null,
+        bankName: null,
+        bankLogoUrl: null,
+        accountNumber: account.accountNumber,
+        paypalEmail: null,
+        accountHolderName: account.accountHolderName,
+      };
+    }
+
     // BCP o OTHER_BANK — requieren banco y número de cuenta / CCI
-    if (!dto.bankId) throw new BadRequestException('El banco es requerido');
+    if (dto.type === 'OTHER_BANK' && !dto.bankId) throw new BadRequestException('El banco es requerido');
     if (!dto.accountNumber) {
       throw new BadRequestException(
         dto.type === 'BCP' ? 'El número de cuenta es requerido' : 'El CCI es requerido',
@@ -157,7 +182,7 @@ export class WalletService {
       data: {
         userId,
         type: dto.type,
-        bankId: dto.bankId,
+        bankId: dto.bankId ?? null,
         anfitrionaProfileId: profile.id,
         accountNumber: dto.accountNumber,
         accountHolderName: dto.accountHolderName,
@@ -169,8 +194,8 @@ export class WalletService {
       id: account.id.toString(),
       type: account.type,
       bankId: account.bankId,
-      bankName: account.bank!.name,
-      bankLogoUrl: account.bank!.logo_url,
+      bankName: account.bank?.name ?? null,
+      bankLogoUrl: account.bank?.logo_url ?? null,
       accountNumber: account.accountNumber,
       paypalEmail: null,
       accountHolderName: account.accountHolderName,
@@ -219,9 +244,9 @@ export class WalletService {
       throw new NotFoundException('Cuenta bancaria no encontrada');
     }
 
-    const isPaypal = bankAccount.type === 'PAYPAL';
-    const payoutCurrency = isPaypal ? 'USD' : 'PEN';
-    const rate = isPaypal
+    const isUsd = ['PAYPAL', 'BYBIT', 'BINANCE'].includes(bankAccount.type);
+    const payoutCurrency = isUsd ? 'USD' : 'PEN';
+    const rate = isUsd
       ? Number(this.config.get<string>('CREDIT_TO_USD_RATE') ?? '0.25')
       : Number(this.config.get<string>('CREDIT_TO_SOLES_RATE') ?? '1');
     const soles = dto.credits * rate; // campo reutilizado: contiene USD para PayPal

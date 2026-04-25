@@ -460,4 +460,6 @@ enum WithdrawalMethodType {
   BCP
   OTHER_BANK
   PAYPAL
+  BYBIT
+  BINANCE
 }

@@ -40,7 +40,7 @@ export class WalletController {
   addBankAccount(
     @CurrentUser() user: JwtUser,
     @Body() body: {
-      type: 'BCP' | 'OTHER_BANK' | 'PAYPAL';
+      type: 'BCP' | 'OTHER_BANK' | 'PAYPAL' | 'BYBIT' | 'BINANCE';
       bankId?: number;
       accountNumber?: string;
       paypalEmail?: string;

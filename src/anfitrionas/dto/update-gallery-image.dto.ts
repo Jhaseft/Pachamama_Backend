@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsOptional, Min } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -15,7 +15,7 @@ export class UpdateGalleryImageDto {
 
   @ApiPropertyOptional({ example: 30, description: 'Créditos para desbloquear. Requerido y > 0 si isPremium es true' })
   @Type(() => Number)
-  @IsInt()
+  @IsNumber()
   @Min(0)
   @IsOptional()
   unlockCredits?: number;

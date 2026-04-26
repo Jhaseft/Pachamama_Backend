@@ -76,7 +76,8 @@ export class MessagesController {
     if (!file) throw new BadRequestException('Debes subir una imagen');
 
     const isLocked = body.isLocked === 'true';
-    const price = body.price ? Number(body.price) : undefined;
+    const price = body.price ? parseFloat(String(body.price)) : undefined;
+    console.log('[sendImage] body.price raw:', body.price, '| parsed:', price);
 
     if (isLocked && (!price || price <= 0)) {
       throw new BadRequestException('Debes definir un precio mayor a 0 para imagen bloqueada');

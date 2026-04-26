@@ -194,6 +194,7 @@ export class MessagesService {
     }
     // ────────────────────────────────────────────────────────────────────────
 
+    console.log('[createMessage] resolvedPrice antes de Prisma:', resolvedPrice, typeof resolvedPrice);
     const message = await this.prisma.message.create({
       data: {
         conversationId: conversation.id,
@@ -205,6 +206,7 @@ export class MessagesService {
         price: resolvedPrice,
       },
     });
+    console.log('[createMessage] price guardado en BD:', message.price);
 
     // Obtener fcmToken del receptor para notificarle
     const receiver = await this.prisma.user.findUnique({
@@ -409,7 +411,7 @@ export class MessagesService {
       this.notificationsService.sendPushNotification(
         anfitriona.fcmToken,
         '💰 Mensaje desbloqueado',
-        `${clientName} desbloqueó tu mensaje · ganaste ${creditsRequired} créditos`,
+        `${clientName} desbloqueó tu mensaje · ganaste ${anfitrionaShare} créditos`,
         { conversationId: message.conversationId, type: 'MESSAGE_UNLOCKED' }
       );
     }
@@ -459,7 +461,16 @@ export class MessagesService {
     });
     const clientName = [client?.firstName, client?.lastName].filter(Boolean).join(' ') || 'Cliente';
 
-    // Transacción atómica: débito cliente + crédito anfitriona (sin comisión)
+    const adminUserId = this.config.get<string>('ADMIN_USER_ID');
+    const feePct = Number(this.config.get<string>('PLATFORM_FEE_PERCENT') ?? '50') / 100;
+    const total = Number(creditsRequired);
+    const adminShare = Math.round(total * feePct * 100) / 100;
+    const anfitrionaShare = Math.round((total - adminShare) * 100) / 100;
+
+    const adminWallet = adminUserId
+      ? await this.prisma.wallet.findUnique({ where: { userId: adminUserId } })
+      : null;
+
     const [, clientTx] = await this.prisma.$transaction([
       this.prisma.wallet.update({
         where: { userId },
@@ -475,16 +486,32 @@ export class MessagesService {
       }),
       this.prisma.wallet.update({
         where: { userId: message.senderId },
-        data: { balance: { increment: creditsRequired } },
+        data: { balance: { increment: anfitrionaShare } },
       }),
       this.prisma.transaction.create({
         data: {
           walletId: anfitrionaWallet.id,
           type: 'EARNING',
-          amount: creditsRequired,
+          amount: anfitrionaShare,
           description: JSON.stringify({ service: 'Imagen de chat desbloqueada', clientName }),
         },
       }),
+      ...(adminWallet && adminShare > 0
+        ? [
+            this.prisma.wallet.update({
+              where: { userId: adminUserId! },
+              data: { balance: { increment: adminShare } },
+            }),
+            this.prisma.transaction.create({
+              data: {
+                walletId: adminWallet.id,
+                type: 'EARNING',
+                amount: adminShare,
+                description: JSON.stringify({ service: 'Comisión Imagen de chat', clientName }),
+              },
+            }),
+          ]
+        : []),
     ]);
 
     // Registrar el desbloqueo guardando la imageUrl para que el cliente
@@ -508,7 +535,7 @@ export class MessagesService {
       this.notificationsService.sendPushNotification(
         anfitriona.fcmToken,
         '💰 Imagen desbloqueada',
-        `${clientName} desbloquó tu foto · ganaste ${creditsRequired} créditos`,
+        `${clientName} desbloqueó tu foto · ganaste ${anfitrionaShare} créditos`,
         { conversationId: message.conversationId, type: 'IMAGE_UNLOCKED' }
       );
     }

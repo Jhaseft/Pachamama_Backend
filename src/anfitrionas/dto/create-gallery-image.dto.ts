@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsOptional, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, Min, ValidateIf } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -22,7 +22,7 @@ export class CreateGalleryImageDto {
       'Se ignora si isPremium es false.',
   })
   @ValidateIf((o) => o.isPremium === true)
-  @IsInt({ message: 'unlockCredits debe ser un número entero.' })
+  @IsNumber({}, { message: 'unlockCredits debe ser un número.' })
   @Min(1, { message: 'unlockCredits debe ser mayor a 0 cuando la imagen es premium.' })
   @Type(() => Number)
   @IsOptional()

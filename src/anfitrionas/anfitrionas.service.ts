@@ -750,7 +750,7 @@ export class AnfitrioneService {
       this.notificationsService.sendPushNotification(
         anfitrionaUser.fcmToken,
         '💰 Imagen desbloqueada',
-        `${clientName} desbloqueó tu imagen premium · ganaste ${creditsRequired} créditos`,
+        `${clientName} desbloqueó tu imagen premium · ganaste ${anfitrionaShare} créditos`,
         { imageId, type: 'IMAGE_UNLOCKED' }
       );
     }

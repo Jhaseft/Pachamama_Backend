@@ -1,7 +1,7 @@
-import { IsInt, Min } from 'class-validator';
+import { IsNumber, Min } from 'class-validator';
 
 export class UpsertSubscriptionDto {
-  @IsInt()
-  @Min(1)
+  @IsNumber()
+  @Min(0.01)
   price: number;
 }

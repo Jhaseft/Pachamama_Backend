@@ -107,7 +107,7 @@ export class UsersService {
     // 2. Mapeamos los datos para que el Frontend reciba algo limpio
     return wallet.transactions.map(t => ({
       id: t.id,
-      monto: t.amount,
+      monto: Number(t.amount),
       tipo: t.type,
       fecha: t.createdAt,
       descripcion: t.description,

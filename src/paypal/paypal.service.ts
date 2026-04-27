@@ -24,7 +24,7 @@ export class PaypalService {
   private readonly cancelUrl: string;
   private readonly usdRate: number;
   private cachedToken: CachedToken | null = null;
- 
+
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
@@ -119,7 +119,6 @@ export class PaypalService {
 
     const accessToken = await this.getAccessToken();
 
-
     const response = await fetch(`${this.apiBaseUrl}/v2/checkout/orders`, {
       method: 'POST',
       headers: {
@@ -208,7 +207,6 @@ export class PaypalService {
     }
 
     const accessToken = await this.getAccessToken();
-
 
     const response = await fetch(
       `${this.apiBaseUrl}/v2/checkout/orders/${orderId}/capture`,

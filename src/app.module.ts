@@ -23,6 +23,7 @@ import { StatsModule } from './admin/stats/stats.module';
 import { CulqiModule } from './culqi/culqi.module';
 import { FlowModule } from './flow/flow.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { BinanceModule } from './binance/binance.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     CulqiModule,
     FlowModule,
     SubscriptionsModule,
+    BinanceModule,
   ],
   controllers: [],
   providers: [],

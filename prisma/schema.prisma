@@ -7,39 +7,40 @@ datasource db {
 }
 
 model User {
-  id                   String               @id @default(uuid())
-  phoneNumber          String               @unique
-  email                String?              @unique
-  password             String?
-  firstName            String?
-  lastName             String?
-  isProfileComplete    Boolean              @default(false)
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  lastLogin            DateTime?
-  role                 UserRole             @default(USER)
-  resetPasswordExpiry  DateTime?
-  resetPasswordToken   String?
-  isActive             Boolean              @default(true)
-  fcmToken             String?
-  lastActiveAt         DateTime?
-  anfitrionaProfile    AnfitrioneProfile?
-  conversationsAsUser1 Conversation[]       @relation("ConversationUser1")
-  conversationsAsUser2 Conversation[]       @relation("ConversationUser2")
-  depositRequests      DepositRequest[]
-  histories            History[]
-  historyViews         HistoryView[]
-  imageUnlocks         ImageUnlock[]
-  receivedLikes        Like[]               @relation("ReceivedLikes")
-  givenLikes           Like[]               @relation("GivenLikes")
-  messageImageUnlocks  MessageImageUnlock[]
-  messageUnlocks       MessageUnlock[]
-  sentMessages         Message[]            @relation("SentMessages")
-  savedByUsers         SavedAnfitriona[]    @relation("SavedAnfitriona")
-  savedAnfitrionas     SavedAnfitriona[]    @relation("SavedByUser")
-  userProfile          UserProfile?
-  subscriptions        UserSubscription[]
-  wallet               Wallet?
+  id                    String                 @id @default(uuid())
+  phoneNumber           String                 @unique
+  email                 String?                @unique
+  password              String?
+  firstName             String?
+  lastName              String?
+  isProfileComplete     Boolean                @default(false)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  lastLogin             DateTime?
+  role                  UserRole               @default(USER)
+  resetPasswordExpiry   DateTime?
+  resetPasswordToken    String?
+  isActive              Boolean                @default(true)
+  fcmToken              String?
+  lastActiveAt          DateTime?
+  anfitrionaProfile     AnfitrioneProfile?
+  binanceDepositIntents BinanceDepositIntent[]
+  conversationsAsUser1  Conversation[]         @relation("ConversationUser1")
+  conversationsAsUser2  Conversation[]         @relation("ConversationUser2")
+  depositRequests       DepositRequest[]
+  histories             History[]
+  historyViews          HistoryView[]
+  imageUnlocks          ImageUnlock[]
+  receivedLikes         Like[]                 @relation("ReceivedLikes")
+  givenLikes            Like[]                 @relation("GivenLikes")
+  messageImageUnlocks   MessageImageUnlock[]
+  messageUnlocks        MessageUnlock[]
+  sentMessages          Message[]              @relation("SentMessages")
+  savedByUsers          SavedAnfitriona[]      @relation("SavedAnfitriona")
+  savedAnfitrionas      SavedAnfitriona[]      @relation("SavedByUser")
+  userProfile           UserProfile?
+  subscriptions         UserSubscription[]
+  wallet                Wallet?
 
   @@map("users")
 }
@@ -171,16 +172,44 @@ model Wallet {
 }
 
 model Package {
-  id             String           @id @default(uuid())
-  name           String           @db.VarChar(100)
-  credits        Int
-  price          Decimal          @db.Decimal(10, 2)
-  isActive       Boolean          @default(true)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  depositRequest DepositRequest[]
+  id                    String                 @id @default(uuid())
+  name                  String                 @db.VarChar(100)
+  credits               Int
+  price                 Decimal                @db.Decimal(10, 2)
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  binanceDepositIntents BinanceDepositIntent[]
+  depositRequest        DepositRequest[]
 
   @@map("packages")
+}
+
+model BinanceDepositIntent {
+  id               String              @id @default(uuid())
+  userId           String
+  packageId        String
+  packageName      String
+  creditsToDeliver Int
+  network          String
+  coin             String
+  walletAddress    String
+  expectedAmount   Decimal             @db.Decimal(20, 8)
+  microDelta       Decimal             @db.Decimal(20, 8)
+  txid             String?             @unique
+  status           BinanceIntentStatus @default(PENDING)
+  failureReason    String?
+  binanceData      Json?
+  expiresAt        DateTime
+  confirmedAt      DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  package          Package             @relation(fields: [packageId], references: [id])
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("binance_deposit_intents")
 }
 
 model History {
@@ -455,4 +484,11 @@ enum WithdrawalMethodType {
   PAYPAL
   BYBIT
   BINANCE
+}
+
+enum BinanceIntentStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  EXPIRED
 }

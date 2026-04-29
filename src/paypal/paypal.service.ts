@@ -144,6 +144,8 @@ export class PaypalService {
           user_action: 'PAY_NOW',
           return_url: this.returnUrl,
           cancel_url: this.cancelUrl,
+          shipping_preference: 'NO_SHIPPING', //sirve para no pedir dirección, aunque igual paypal la pide a veces, pero al menos no muestra esa sección
+          landing_page: 'BILLING', //esto hace que el primer paso sea pedir email y no mostrar opciones de login, lo cual es mejor para evitar confusiones con cuentas de paypal que no tienen fondos o no están verificadas, ya que igual se puede pagar con tarjeta sin necesidad de login
         },
       }),
     });

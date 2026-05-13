@@ -24,6 +24,7 @@ import { CulqiModule } from './culqi/culqi.module';
 import { FlowModule } from './flow/flow.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { BinanceModule } from './binance/binance.module';
+import { ChatIaModule } from './chat-ia/chat-ia.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { BinanceModule } from './binance/binance.module';
     FlowModule,
     SubscriptionsModule,
     BinanceModule,
+    ChatIaModule,
   ],
   controllers: [],
   providers: [],

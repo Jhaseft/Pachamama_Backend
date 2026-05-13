@@ -48,12 +48,14 @@ export class MessagesGateway implements OnGatewayDisconnect {
     client.join(`user_${userId}`);
     this.presenceMap.set(client.id, userId);
 
+    const now = new Date();
     await this.prisma.user.update({
       where: { id: userId },
-      data: { lastActiveAt: new Date() },
+      data: { lastActiveAt: now },
     });
 
-    await this.emitPresenceToConversationPartners(userId, true, new Date());
+    await this.emitPresenceToConversationPartners(userId, true, now);
+    await this.emitPresenceSnapshotToClient(userId, client);
   }
 
   async handleDisconnect(client: Socket) {
@@ -104,6 +106,41 @@ export class MessagesGateway implements OnGatewayDisconnect {
 
     for (const partnerId of partnerIds) {
       this.server.to(`user_${partnerId}`).emit('user_presence', payload);
+    }
+  }
+
+  private async emitPresenceSnapshotToClient(userId: string, client: Socket) {
+    const conversations = await this.prisma.conversation.findMany({
+      where: { OR: [{ user1Id: userId }, { user2Id: userId }] },
+      select: { user1Id: true, user2Id: true },
+    });
+
+    if (conversations.length === 0) return;
+
+    const partnerIds = Array.from(
+      new Set(
+        conversations.map((c) => (c.user1Id === userId ? c.user2Id : c.user1Id)),
+      ),
+    );
+
+    const partners = await this.prisma.user.findMany({
+      where: { id: { in: partnerIds } },
+      select: { id: true, lastActiveAt: true },
+    });
+
+    const partnerById = new Map(partners.map((p) => [p.id, p]));
+
+    for (const partnerId of partnerIds) {
+      const partner = partnerById.get(partnerId);
+      const isOnline = Array.from(this.presenceMap.values()).some(
+        (id) => id === partnerId,
+      );
+
+      client.emit('user_presence', {
+        userId: partnerId,
+        isOnline,
+        lastActiveAt: partner?.lastActiveAt?.toISOString() ?? null,
+      });
     }
   }
 

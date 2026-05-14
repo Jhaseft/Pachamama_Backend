@@ -17,7 +17,7 @@ export class ChatIaController {
     if (role !== 'usuario' && role !== 'anfitriona') {
       throw new BadRequestException('El rol debe ser usuario o anfitriona');
     }
-    const reply = await this.chatIaService.sendMessage(role as ChatRole, body.message, body.history as ChatMessage[], body.sessionId);
-    return { reply };
+    const result = await this.chatIaService.sendMessage(role as ChatRole, body.message, body.history as ChatMessage[], body.sessionId);
+    return result;
   }
 }

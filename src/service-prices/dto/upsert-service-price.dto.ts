@@ -4,9 +4,9 @@ import { ServiceType } from '@prisma/client';
 export class UpsertServicePriceDto {
 
   @IsEnum(ServiceType)
-  serviceType: ServiceType;
+  serviceType!: ServiceType;
 
   @IsNumber()
-  @Min(0.01)
-  price: number;
+  @Min(0)
+  price!: number;
 }

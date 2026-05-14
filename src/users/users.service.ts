@@ -21,14 +21,7 @@ export class UsersService {
 
           wallet: {
             create: {
-              balance: 10,
-              transactions: {
-                create: {
-                  amount: 10,
-                  type: TransactionType.DEPOSIT,
-                  description: 'Regalo de bienvenida - 10 créditos',
-                },
-              },
+              balance: 0,
             }
           },
           userProfile: {
@@ -117,11 +110,11 @@ export class UsersService {
 
   // Función auxiliar para generar un texto descriptivo según el tipo
   private formatDetail(t: any) {
-    if (t.type === 'MESSAGE_UNLOCK' || t.type === TransactionType.MESSAGE_UNLOCK ) {
+    if (t.type === 'MESSAGE_UNLOCK' || t.type === TransactionType.MESSAGE_UNLOCK) {
       const nombreAnfitriona = `${t.messageUnlock?.message?.sender?.firstName || 'Anfitriona'}`;
       return `Mensaje desbloqueada de ${nombreAnfitriona}`;
     }
-    if (t.type === 'IMAGE_UNLOCK' || t.type === TransactionType.IMAGE_UNLOCK ) {
+    if (t.type === 'IMAGE_UNLOCK' || t.type === TransactionType.IMAGE_UNLOCK) {
       const nombreAnfitriona = `${t.imageUnlock?.image?.profile?.username || 'Anfitriona'}`;
       return `Foto premium de ${nombreAnfitriona}`;
     }

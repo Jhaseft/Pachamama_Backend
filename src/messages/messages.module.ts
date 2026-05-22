@@ -7,9 +7,17 @@ import { CallsModule } from '../calls/calls.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
+import { ReferralsModule } from '../referrals/referrals.module';
 
 @Module({
-  imports: [ServicePricesModule, CallsModule, NotificationsModule, PrismaModule, CloudinaryModule],
+  imports: [
+    ServicePricesModule,
+    CallsModule,
+    NotificationsModule,
+    PrismaModule,
+    CloudinaryModule,
+    ReferralsModule,
+  ],
   controllers: [MessagesController],
   providers: [MessagesService, MessagesGateway],
 })

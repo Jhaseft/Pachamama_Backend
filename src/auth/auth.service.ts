@@ -20,6 +20,7 @@ import { MailService } from '../mail/mail.service';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { ReferralsService } from '../referrals/referrals.service';
 
 @Injectable()
 export class AuthService {
@@ -31,6 +32,7 @@ export class AuthService {
     private mailService: MailService,
     private prisma: PrismaService,
     private cloudinary: CloudinaryService,
+    private referralsService: ReferralsService,
   ) {}
 
   // ─── OTP FLOW ─────────────────────────────────────────────────────────────
@@ -111,6 +113,11 @@ export class AuthService {
       isProfileComplete: true,
     });
 
+    await this.referralsService.tryLinkReferralCodeToUser(
+      newUser.id,
+      dto.referralCode,
+    );
+
     const { password: _, ...userWithoutPass } = newUser;
     return this.generateTokenResponse(userWithoutPass);
   }
@@ -133,6 +140,10 @@ export class AuthService {
 
     if (dto.password !== dto.confirmPassword) {
       throw new BadRequestException('Las contraseñas no coinciden');
+    }
+
+    if (dto.referralCode) {
+      await this.referralsService.validateCreatorReferralCode(dto.referralCode);
     }
 
     // 2. Verificar unicidad
@@ -186,6 +197,11 @@ export class AuthService {
         idDocUrl,
         idDocPublicId,
       },
+    });
+
+    await this.referralsService.createPendingCreatorReferralFromCode({
+      referredCreatorId: newUser.id,
+      referralCode: dto.referralCode,
     });
 
     const { password: _, ...userWithoutPass } = newUser;

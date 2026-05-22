@@ -4,6 +4,7 @@ import { ServiceType, TransactionType } from '@prisma/client';
 import { RtcTokenBuilder, RtcRole } from 'agora-token';
 import { PrismaService } from '../prisma.service';
 import { ServicePricesService } from '../service-prices/service-prices.service';
+import { ReferralsService } from '../referrals/referrals.service';
 
 @Injectable()
 export class CallsService {
@@ -11,6 +12,7 @@ export class CallsService {
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly servicePricesService: ServicePricesService,
+    private readonly referralsService: ReferralsService,
   ) {}
 
   generateToken(channelName: string, uid: number): { token: string; appId: string } {
@@ -74,7 +76,7 @@ export class CallsService {
       ? await this.prisma.wallet.findUnique({ where: { userId: adminUserId } })
       : null;
 
-    await this.prisma.$transaction([
+    const txResults = await this.prisma.$transaction([
       this.prisma.wallet.update({
         where: { userId: callerId },
         data: { balance: { decrement: creditsToCharge } },
@@ -117,6 +119,23 @@ export class CallsService {
         : []),
     ]);
 
+    const creatorEarningTx = txResults[3] as { id: string };
+    try {
+      await this.referralsService.maybeRewardCreatorReferralFromEarning({
+        referredCreatorId: anfitrionaId,
+        sourceEarningTransactionId: creatorEarningTx.id,
+        sourceEarningAmount: anfitrionaShare,
+        sourceType: TransactionType.EARNING,
+        purchaseCreatorId: anfitrionaId,
+      });
+    } catch (error) {
+      console.error(
+        `[Referrals] No se pudo acreditar comisión por llamada earningTx=${creatorEarningTx.id}`,
+        error,
+      );
+    }
+
     return { creditsCharged: creditsToCharge, minutesBilled: minutes };
   }
 }
+

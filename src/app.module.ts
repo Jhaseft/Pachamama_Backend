@@ -25,6 +25,7 @@ import { FlowModule } from './flow/flow.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { BinanceModule } from './binance/binance.module';
 import { ChatIaModule } from './chat-ia/chat-ia.module';
+import { ReferralsModule } from './referrals/referrals.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { ChatIaModule } from './chat-ia/chat-ia.module';
     SubscriptionsModule,
     BinanceModule,
     ChatIaModule,
+    ReferralsModule,
   ],
   controllers: [],
   providers: [],

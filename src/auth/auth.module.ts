@@ -11,6 +11,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { MailModule } from '../mail/mail.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
+import { ReferralsModule } from '../referrals/referrals.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { CloudinaryModule } from '../cloudinary/cloudinary.module';
     MailModule,
     PrismaModule,
     CloudinaryModule,
+    ReferralsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

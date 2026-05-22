@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { Prisma, UserRole, MediaType } from '@prisma/client';
+import { Prisma, UserRole, MediaType, TransactionType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { CreateAnfitrioneDto } from './dto/create-anfitriona.dto';
@@ -28,6 +28,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { NotificationsService } from '../notifications/notifications.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { ReferralsService } from '../referrals/referrals.service';
 
 @Injectable()
 export class AnfitrioneService {
@@ -40,6 +41,7 @@ export class AnfitrioneService {
     private config: ConfigService,
     private notificationsService: NotificationsService,
     private subscriptionsService: SubscriptionsService,
+    private referralsService: ReferralsService,
   ) { }
 
   async create(dto: CreateAnfitrioneDto, idDocFile?: Express.Multer.File) {
@@ -676,7 +678,7 @@ export class AnfitrioneService {
       : null;
 
     // 7. Transacción atómica: débito cliente + crédito anfitriona + comisión admin
-    const [, clientTx] = await this.prisma.$transaction([
+    const txResults = await this.prisma.$transaction([
       // Débito al cliente
       this.prisma.wallet.update({
         where: { userId: clientUserId },
@@ -722,6 +724,8 @@ export class AnfitrioneService {
           ]
         : []),
     ]);
+    const clientTx = txResults[1] as { id: string };
+    const creatorEarningTx = txResults[3] as { id: string };
 
     // 8. Registrar el unlock (garantiza idempotencia futura)
     await this.prisma.imageUnlock.create({
@@ -732,6 +736,21 @@ export class AnfitrioneService {
         transactionId: clientTx.id,
       },
     });
+
+    try {
+      await this.referralsService.maybeRewardCreatorReferralFromEarning({
+        referredCreatorId: anfitrionaId,
+        sourceEarningTransactionId: creatorEarningTx.id,
+        sourceEarningAmount: anfitrionaShare,
+        sourceType: TransactionType.EARNING,
+        purchaseCreatorId: anfitrionaId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `No se pudo acreditar comisión de referido para IMAGE_UNLOCK earningTx=${creatorEarningTx.id}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
 
     // 9. Notificar a la anfitriona
     const [anfitrionaUser, clientUser] = await Promise.all([
@@ -1193,3 +1212,4 @@ export class AnfitrioneService {
     return age;
   }
 }
+

@@ -1,4 +1,5 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CompleteRegistrationDto {
   @IsString()
@@ -20,4 +21,10 @@ export class CompleteRegistrationDto {
   @IsString()
   @MinLength(6)
   confirmPassword: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  referralCode?: string;
 }

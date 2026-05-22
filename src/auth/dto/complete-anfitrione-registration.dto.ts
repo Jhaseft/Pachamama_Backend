@@ -1,5 +1,6 @@
 import { IsString, IsNotEmpty, IsOptional, IsEmail, MinLength, IsDateString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 
 export class CompleteAnfitrioneRegistrationDto {
     @ApiProperty({ description: 'Token temporal obtenido al verificar OTP' })
@@ -46,4 +47,11 @@ export class CompleteAnfitrioneRegistrationDto {
     @IsString()
     @IsNotEmpty()
     cedula: string;
+
+    @ApiProperty({ example: 'CAMILA123', required: false })
+    @IsOptional()
+    @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+    @IsString()
+    @IsNotEmpty()
+    referralCode?: string;
 }

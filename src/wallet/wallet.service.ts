@@ -4,8 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { TransactionType } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+
+const earningTypes: TransactionType[] = [
+  TransactionType.EARNING,
+  TransactionType.REFERRAL_CREATOR_REWARD,
+];
 
 @Injectable()
 export class WalletService {
@@ -31,7 +37,7 @@ export class WalletService {
       this.prisma.transaction.aggregate({
         where: {
           walletId: wallet.id,
-          type: 'EARNING',
+          type: { in: earningTypes },
           createdAt: { gte: startOfToday },
         },
         _sum: { amount: true },
@@ -39,13 +45,13 @@ export class WalletService {
       this.prisma.transaction.aggregate({
         where: {
           walletId: wallet.id,
-          type: 'EARNING',
+          type: { in: earningTypes },
           createdAt: { gte: startOfWeek },
         },
         _sum: { amount: true },
       }),
       this.prisma.transaction.findMany({
-        where: { walletId: wallet.id, type: 'EARNING' },
+        where: { walletId: wallet.id, type: { in: earningTypes } },
         orderBy: { createdAt: 'desc' },
         take: 50,
       }),

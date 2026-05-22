@@ -10,6 +10,7 @@ model User {
   id                    String                 @id @default(uuid())
   phoneNumber           String                 @unique
   email                 String?                @unique
+  referralCode          String?                @unique
   password              String?
   firstName             String?
   lastName              String?
@@ -41,6 +42,14 @@ model User {
   userProfile           UserProfile?
   subscriptions         UserSubscription[]
   wallet                Wallet?
+  creatorReferralSetting      CreatorReferralSetting?
+  referralsAsCreator          CreatorReferral[]           @relation("CreatorReferrer")
+  referralAsReferred          CreatorReferral?            @relation("CreatorReferred")
+  referralAsReferredCreator   CreatorReferral?            @relation("CreatorReferredCreator")
+  referralRewardsAsReferrer   CreatorReferralRewardEvent[] @relation("RewardReferrerCreator")
+  referralRewardsAsReferred   CreatorReferralRewardEvent[] @relation("RewardReferredUser")
+  referralRewardsAsReferredCreator CreatorReferralRewardEvent[] @relation("RewardReferredCreator")
+  referralRewardsAsPurchaseCreator CreatorReferralRewardEvent[] @relation("RewardPurchaseCreator")
 
   @@map("users")
 }
@@ -291,10 +300,75 @@ model Transaction {
   imageUnlock        ImageUnlock?
   messageImageUnlock MessageImageUnlock?
   messageUnlock      MessageUnlock?
+  referralSourceRewardEvent CreatorReferralRewardEvent? @relation("ReferralSourceTransaction")
+  referralRewardTransactionEvent CreatorReferralRewardEvent? @relation("ReferralRewardTransaction")
   depositRequest     DepositRequest?     @relation(fields: [depositRequestId], references: [id])
   wallet             Wallet              @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
   @@map("transactions")
+}
+
+model CreatorReferral {
+  id                String                @id @default(uuid())
+  referrerCreatorId String
+  referredUserId    String?               @unique
+  referredCreatorId String?               @unique
+  referralCodeUsed  String
+  percent           Decimal               @default(0) @db.Decimal(5, 2)
+  status            CreatorReferralStatus @default(ACTIVE)
+  qualifiedAt       DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  referrerCreator   User                  @relation("CreatorReferrer", fields: [referrerCreatorId], references: [id], onDelete: Cascade)
+  referredUser      User?                 @relation("CreatorReferred", fields: [referredUserId], references: [id], onDelete: Cascade)
+  referredCreator   User?                 @relation("CreatorReferredCreator", fields: [referredCreatorId], references: [id], onDelete: Cascade)
+  rewardEvents      CreatorReferralRewardEvent[]
+
+  @@index([referrerCreatorId])
+  @@index([referredCreatorId])
+  @@map("creator_referrals")
+}
+
+model CreatorReferralSetting {
+  id        String   @id @default(uuid())
+  creatorId String   @unique
+  percent   Decimal  @db.Decimal(5, 2)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  creator   User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@map("creator_referral_settings")
+}
+
+model CreatorReferralRewardEvent {
+  id                  String                      @id @default(uuid())
+  referralId          String
+  referrerCreatorId   String
+  referredUserId      String?
+  referredCreatorId   String?
+  purchaseCreatorId   String?
+  sourceTransactionId String                      @unique
+  rewardTransactionId String                      @unique
+  sourceAmount        Decimal                     @db.Decimal(10, 2)
+  percent             Decimal                     @db.Decimal(5, 2)
+  rewardAmount        Decimal                     @db.Decimal(10, 2)
+  status              CreatorReferralRewardStatus @default(PAID)
+  createdAt           DateTime                    @default(now())
+  reversedAt          DateTime?
+  referral            CreatorReferral             @relation(fields: [referralId], references: [id], onDelete: Cascade)
+  referrerCreator     User                        @relation("RewardReferrerCreator", fields: [referrerCreatorId], references: [id], onDelete: Cascade)
+  referredUser        User?                       @relation("RewardReferredUser", fields: [referredUserId], references: [id], onDelete: Cascade)
+  referredCreator     User?                       @relation("RewardReferredCreator", fields: [referredCreatorId], references: [id], onDelete: SetNull)
+  purchaseCreator     User?                       @relation("RewardPurchaseCreator", fields: [purchaseCreatorId], references: [id], onDelete: SetNull)
+  sourceTransaction   Transaction                 @relation("ReferralSourceTransaction", fields: [sourceTransactionId], references: [id], onDelete: Restrict)
+  rewardTransaction   Transaction                 @relation("ReferralRewardTransaction", fields: [rewardTransactionId], references: [id], onDelete: Restrict)
+
+  @@index([referralId])
+  @@index([referrerCreatorId])
+  @@index([referredUserId])
+  @@index([referredCreatorId])
+  @@map("creator_referral_reward_events")
 }
 
 model ServicePrice {
@@ -441,6 +515,8 @@ enum TransactionType {
   MESSAGE_SEND
   SUBSCRIPTION
   CHAT_IMAGE_UNLOCK
+  REFERRAL_CREATOR_REWARD
+  REFERRAL_CREATOR_REWARD_REVERSAL
 }
 
 enum ServiceType {
@@ -491,4 +567,15 @@ enum BinanceIntentStatus {
   CONFIRMED
   REJECTED
   EXPIRED
+}
+
+enum CreatorReferralStatus {
+  PENDING
+  ACTIVE
+  DISABLED
+}
+
+enum CreatorReferralRewardStatus {
+  PAID
+  REVERSED
 }

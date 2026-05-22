@@ -4,7 +4,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { TransactionType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ReferralsService } from '../referrals/referrals.service';
 import { UpsertSubscriptionDto } from './dto/upsert-subscription.dto';
 
 @Injectable()
@@ -12,6 +14,7 @@ export class SubscriptionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly referralsService: ReferralsService,
   ) {}
 
   // ─── Anfitriona: gestión de su plan ───────────────────────────────────────
@@ -111,7 +114,7 @@ export class SubscriptionsService {
       : null;
 
     // 5. Transacción atómica: débito cliente + crédito anfitriona + comisión admin
-    await this.prisma.$transaction([
+    const txResults = await this.prisma.$transaction([
       this.prisma.wallet.update({
         where: { userId: clientUserId },
         data: { balance: { decrement: creditsRequired } },
@@ -153,6 +156,22 @@ export class SubscriptionsService {
           ]
         : []),
     ]);
+
+    const creatorEarningTx = txResults[3] as { id: string };
+    try {
+      await this.referralsService.maybeRewardCreatorReferralFromEarning({
+        referredCreatorId: anfitrionaUserId,
+        sourceEarningTransactionId: creatorEarningTx.id,
+        sourceEarningAmount: anfitrionaShare,
+        sourceType: TransactionType.EARNING,
+        purchaseCreatorId: anfitrionaUserId,
+      });
+    } catch (error) {
+      console.error(
+        `[Referrals] No se pudo acreditar comisión por suscripción earningTx=${creatorEarningTx.id}`,
+        error,
+      );
+    }
 
     // 6. Crear o renovar la UserSubscription (30 días)
     const expiresAt = new Date();
@@ -279,3 +298,4 @@ export class SubscriptionsService {
     return { price: sub.price };
   }
 }
+

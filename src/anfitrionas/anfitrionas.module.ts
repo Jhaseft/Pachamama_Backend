@@ -6,9 +6,16 @@ import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { ReferralsModule } from '../referrals/referrals.module';
 
 @Module({
-  imports: [PrismaModule, CloudinaryModule, NotificationsModule, SubscriptionsModule],
+  imports: [
+    PrismaModule,
+    CloudinaryModule,
+    NotificationsModule,
+    SubscriptionsModule,
+    ReferralsModule,
+  ],
   controllers: [PublicAnfitrioneController, AnfitrioneController],
   providers: [AnfitrioneService],
 })

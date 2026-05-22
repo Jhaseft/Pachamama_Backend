@@ -4,12 +4,13 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ServiceType } from '@prisma/client';
+import { ServiceType, TransactionType } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma.service';
 import { ServicePricesService } from '../service-prices/service-prices.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ReferralsService } from '../referrals/referrals.service';
 
 
 @Injectable()
@@ -21,6 +22,7 @@ export class MessagesService {
     private readonly servicePricesService: ServicePricesService,
     private readonly notificationsService: NotificationsService,
     private readonly config: ConfigService,
+    private readonly referralsService: ReferralsService,
   ) {}
 
   private ttlCutoff(): Date {
@@ -148,7 +150,7 @@ export class MessagesService {
           ? await this.prisma.wallet.findUnique({ where: { userId: adminUserId } })
           : null;
 
-        await this.prisma.$transaction([
+        const txResults = await this.prisma.$transaction([
           this.prisma.wallet.update({
             where: { userId: senderId },
             data: { balance: { decrement: creditsRequired } },
@@ -190,6 +192,22 @@ export class MessagesService {
               ]
             : []),
         ]);
+
+        const creatorEarningTx = txResults[3] as { id: string };
+        try {
+          await this.referralsService.maybeRewardCreatorReferralFromEarning({
+            referredCreatorId: receiverId,
+            sourceEarningTransactionId: creatorEarningTx.id,
+            sourceEarningAmount: anfitrionaShare,
+            sourceType: TransactionType.EARNING,
+            purchaseCreatorId: receiverId,
+          });
+        } catch (error) {
+          this.logger.error(
+            `No se pudo acreditar comisión de referido para MESSAGE_SEND earningTx=${creatorEarningTx.id}`,
+            error instanceof Error ? error.stack : undefined,
+          );
+        }
       }
     }
     // ────────────────────────────────────────────────────────────────────────
@@ -349,7 +367,7 @@ export class MessagesService {
       : null;
 
     // Transacción atómica: débito al cliente + crédito a la anfitriona + comisión admin
-    const [, clientTx] = await this.prisma.$transaction([
+    const txResults = await this.prisma.$transaction([
       this.prisma.wallet.update({
         where: { userId },
         data: { balance: { decrement: creditsRequired } },
@@ -391,6 +409,8 @@ export class MessagesService {
           ]
         : []),
     ]);
+    const clientTx = txResults[1] as { id: string };
+    const creatorEarningTx = txResults[3] as { id: string };
 
     await this.prisma.messageUnlock.create({
       data: {
@@ -400,6 +420,21 @@ export class MessagesService {
         transactionId: clientTx.id,
       },
     });
+
+    try {
+      await this.referralsService.maybeRewardCreatorReferralFromEarning({
+        referredCreatorId: message.senderId,
+        sourceEarningTransactionId: creatorEarningTx.id,
+        sourceEarningAmount: anfitrionaShare,
+        sourceType: TransactionType.EARNING,
+        purchaseCreatorId: message.senderId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `No se pudo acreditar comisión de referido para MESSAGE_UNLOCK earningTx=${creatorEarningTx.id}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
 
     // Notificar a la anfitriona que su mensaje fue desbloqueado
     const anfitriona = await this.prisma.user.findUnique({
@@ -471,7 +506,7 @@ export class MessagesService {
       ? await this.prisma.wallet.findUnique({ where: { userId: adminUserId } })
       : null;
 
-    const [, clientTx] = await this.prisma.$transaction([
+    const txResults = await this.prisma.$transaction([
       this.prisma.wallet.update({
         where: { userId },
         data: { balance: { decrement: creditsRequired } },
@@ -513,6 +548,8 @@ export class MessagesService {
           ]
         : []),
     ]);
+    const clientTx = txResults[1] as { id: string };
+    const creatorEarningTx = txResults[3] as { id: string };
 
     // Registrar el desbloqueo guardando la imageUrl para que el cliente
     // siempre pueda acceder a su imagen aunque el mensaje expire
@@ -525,6 +562,21 @@ export class MessagesService {
         transactionId: clientTx.id,
       },
     });
+
+    try {
+      await this.referralsService.maybeRewardCreatorReferralFromEarning({
+        referredCreatorId: message.senderId,
+        sourceEarningTransactionId: creatorEarningTx.id,
+        sourceEarningAmount: anfitrionaShare,
+        sourceType: TransactionType.EARNING,
+        purchaseCreatorId: message.senderId,
+      });
+    } catch (error) {
+      this.logger.error(
+        `No se pudo acreditar comisión de referido para CHAT_IMAGE_UNLOCK earningTx=${creatorEarningTx.id}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
 
     // Notificar a la anfitriona
     const anfitriona = await this.prisma.user.findUnique({
@@ -648,3 +700,6 @@ export class MessagesService {
     return { success: true };
   }
 }
+
+
+

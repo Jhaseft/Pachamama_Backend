@@ -125,6 +125,13 @@ export class UsersService {
       return t.description ? `Llamada: ${t.description}` : `Llamada realizada`;
     }
 
+    if (
+      t.type === 'REFERRAL_CREATOR_REWARD' ||
+      t.type === TransactionType.REFERRAL_CREATOR_REWARD
+    ) {
+      return 'Comisión por referido';
+    }
+
     if (t.type === 'EARNING' || t.type === TransactionType.EARNING) {
       return `Ingreso recibido por servicios`;
     }

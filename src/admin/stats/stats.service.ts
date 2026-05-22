@@ -1,6 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { UserRole, DepositStatus, WithdrawalStatus } from '@prisma/client';
+import {
+  UserRole,
+  DepositStatus,
+  WithdrawalStatus,
+  TransactionType,
+} from '@prisma/client';
+
+const earningTypes: TransactionType[] = [
+  TransactionType.EARNING,
+  TransactionType.REFERRAL_CREATOR_REWARD,
+];
 
 @Injectable()
 export class StatsService {
@@ -20,17 +30,25 @@ export class StatsService {
       // Ganancias totales
       this.prisma.transaction.aggregate({
         _sum: { amount: true },
-        where: { walletId: wallet.id, type: 'EARNING' },
+        where: { walletId: wallet.id, type: { in: earningTypes } },
       }),
       // Ganancias hoy
       this.prisma.transaction.aggregate({
         _sum: { amount: true },
-        where: { walletId: wallet.id, type: 'EARNING', createdAt: { gte: startOfToday } },
+        where: {
+          walletId: wallet.id,
+          type: { in: earningTypes },
+          createdAt: { gte: startOfToday },
+        },
       }),
       // Ganancias este mes
       this.prisma.transaction.aggregate({
         _sum: { amount: true },
-        where: { walletId: wallet.id, type: 'EARNING', createdAt: { gte: startOfMonth } },
+        where: {
+          walletId: wallet.id,
+          type: { in: earningTypes },
+          createdAt: { gte: startOfMonth },
+        },
       }),
     ]);
 

@@ -37,28 +37,27 @@ export class AuthService {
 
   // ─── OTP FLOW ─────────────────────────────────────────────────────────────
 
-  async sendOtp(phoneNumber: string) {
+  async sendOtp(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
     const code = randomInt(0, 1000000).toString().padStart(6, '0');
-    await this.cacheManager.set(`otp_${phoneNumber}`, code, 300000); // 5 min
+    await this.cacheManager.set(`otp_${normalizedEmail}`, code, 300000); // 5 min
 
-    await this.whatsappService.sendText(
-      phoneNumber,
-      `Tu código de verificación de Pachamama es: *${code}*\nExpira en 5 minutos.`,
-    );
+    await this.mailService.sendOtpEmail(normalizedEmail, code);
 
-    return { message: 'Código OTP enviado por WhatsApp. Expira en 5 minutos.' };
+    return { message: 'Código OTP enviado a tu correo. Expira en 5 minutos.' };
   }
 
-  async verifyOtp(phoneNumber: string, code: string) {
-    const cached = await this.cacheManager.get<string>(`otp_${phoneNumber}`);
+  async verifyOtp(email: string, code: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const cached = await this.cacheManager.get<string>(`otp_${normalizedEmail}`);
 
     if (!cached || cached !== code) {
       throw new BadRequestException('Código OTP inválido o expirado');
     }
 
-    await this.cacheManager.del(`otp_${phoneNumber}`);
+    await this.cacheManager.del(`otp_${normalizedEmail}`);
 
-    const user = await this.usersService.findOneByPhone(phoneNumber);
+    const user = await this.usersService.findOneByEmail(normalizedEmail);
 
     if (user) {
       // Usuario existente → retornar JWT
@@ -68,7 +67,7 @@ export class AuthService {
 
     // Usuario nuevo → retornar token temporal para completar el registro
     const tempToken = this.jwtService.sign(
-      { sub: phoneNumber, type: 'phone_verified' },
+      { sub: normalizedEmail, type: 'email_verified' },
       { expiresIn: '10m' },
     );
 
@@ -84,7 +83,7 @@ export class AuthService {
       throw new BadRequestException('Token inválido o expirado');
     }
 
-    if (payload.type !== 'phone_verified') {
+    if (payload.type !== 'email_verified') {
       throw new BadRequestException('Token inválido');
     }
 
@@ -92,10 +91,7 @@ export class AuthService {
       throw new BadRequestException('Las contraseñas no coinciden');
     }
 
-    const email = dto.email?.trim().toLowerCase();
-    if (!email) {
-      throw new BadRequestException('El email es obligatorio');
-    }
+    const email = payload.sub;
 
     const existing = await this.usersService.findOneByEmail(email);
     if (existing) {
@@ -105,7 +101,6 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
     const newUser = await this.usersService.create({
-      phoneNumber: payload.sub,
       email,
       firstName: dto.firstName,
       lastName: dto.lastName,
@@ -134,7 +129,7 @@ export class AuthService {
       throw new BadRequestException('Token inválido o expirado');
     }
 
-    if (payload.type !== 'phone_verified') {
+    if (payload.type !== 'email_verified') {
       throw new BadRequestException('Token inválido');
     }
 
@@ -146,11 +141,13 @@ export class AuthService {
       await this.referralsService.validateCreatorReferralCode(dto.referralCode);
     }
 
+    const email = payload.sub;
+
     // 2. Verificar unicidad
     const [existingCedula, existingUsername, existingEmail] = await Promise.all([
       this.prisma.anfitrioneProfile.findUnique({ where: { cedula: dto.cedula } }),
       this.prisma.anfitrioneProfile.findUnique({ where: { username: dto.username } }),
-      dto.email ? this.usersService.findOneByEmail(dto.email.trim().toLowerCase()) : null,
+      this.usersService.findOneByEmail(email),
     ]);
 
     if (existingCedula) throw new ConflictException('La cédula ya está registrada.');
@@ -159,12 +156,10 @@ export class AuthService {
 
     // 3. Crear usuario con rol ANFITRIONA
     const hashedPassword = await bcrypt.hash(dto.password, 10);
-    const email = dto.email?.trim().toLowerCase();
 
     const newUser = await this.prisma.user.create({
       data: {
-        phoneNumber: payload.sub,
-        email: email ?? null,
+        email,
         firstName: dto.firstName,
         lastName: dto.lastName,
         password: hashedPassword,

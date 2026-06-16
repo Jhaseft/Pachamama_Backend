@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsEmail, MinLength, IsDateString } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, MinLength, IsDateString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 
@@ -17,11 +17,6 @@ export class CompleteAnfitrioneRegistrationDto {
     @IsString()
     @IsNotEmpty()
     lastName: string;
-
-    @ApiProperty({ example: 'camila@gmail.com', required: false })
-    @IsOptional()
-    @IsEmail()
-    email?: string;
 
     @ApiProperty({ minLength: 6 })
     @IsString()

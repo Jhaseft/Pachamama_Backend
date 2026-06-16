@@ -1,8 +1,8 @@
-import { IsString } from 'class-validator';
+import { IsEmail, IsString } from 'class-validator';
 
 export class VerifyOtpDto {
-  @IsString()
-  phoneNumber: string;
+  @IsEmail()
+  email: string;
 
   @IsString()
   code: string;

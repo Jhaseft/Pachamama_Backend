@@ -62,6 +62,24 @@ export class MailService {
         }
     }
 
+    //METODO PARA ENVIAR CODIGO OTP DE VERIFICACION DE CORREO
+    async sendOtpEmail(email: string, code: string) {
+        try {
+            await this.mailerService.sendMail({
+                to: email,
+                subject: 'Tu código de verificación - Pachamama',
+                template: 'otp',
+                context: {
+                    code,
+                },
+            });
+            this.logger.log(`📧 Email de OTP enviado a ${email}`);
+        } catch (error) {
+            this.logger.error(`Error enviando email de OTP a ${email}:`, error);
+            throw error;
+        }
+    }
+
     //METODO PARA ENVIAR NOTIFICACION DE ESTADO DE SOLICITUD DE RETIRO
     async sendWithdrawalRequestNotification(
         email: string,

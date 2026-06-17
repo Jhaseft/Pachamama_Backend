@@ -21,6 +21,10 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { ReferralsService } from '../referrals/referrals.service';
+import { GoogleAuthService } from '../google-auth/google-auth.service';
+import { CompleteGoogleClientProfileDto } from './dto/complete-google-client-profile.dto';
+import { CompleteGoogleAnfitrioneProfileDto } from './dto/complete-google-anfitriona-profile.dto';
+import { SetPasswordDto } from './dto/set-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -33,6 +37,7 @@ export class AuthService {
     private prisma: PrismaService,
     private cloudinary: CloudinaryService,
     private referralsService: ReferralsService,
+    private googleAuthService: GoogleAuthService,
   ) {}
 
   // ─── OTP FLOW ─────────────────────────────────────────────────────────────
@@ -72,6 +77,139 @@ export class AuthService {
     );
 
     return { needsProfile: true, tempToken };
+  }
+
+  // ─── GOOGLE LOGIN ─────────────────────────────────────────────────────────
+
+  // METODO PARA LOGIN CON GOOGLE DESDE LA APP MÓVIL (VERIFICA ID TOKEN EMITIDO POR LA APP)
+  async googleLogin(idToken: string) {
+    const { email, firstName, lastName } = await this.googleAuthService.verifyIdToken(idToken);
+
+    const existing = await this.usersService.findOneByEmail(email);
+
+    if (existing) {
+      if (existing.role === 'ANFITRIONA') {
+        throw new ConflictException('Este correo está registrado como anfitriona. Usa el acceso de anfitrionas.');
+      }
+      const { password: _, ...userWithoutPass } = existing;
+      return this.generateTokenResponse(userWithoutPass);
+    }
+
+    const newUser = await this.usersService.create({
+      email,
+      firstName,
+      lastName,
+      isProfileComplete: false,
+    });
+
+    const { password: _, ...userWithoutPass } = newUser;
+    return this.generateTokenResponse(userWithoutPass);
+  }
+
+  // METODO PARA LOGIN CON GOOGLE DESDE LA APP MÓVIL, PERO SOLO PARA ANFITRIONAS (VERIFICA ID TOKEN EMITIDO
+  async googleLoginAnfitriona(idToken: string) {
+    const { email, firstName, lastName } = await this.googleAuthService.verifyIdToken(idToken);
+
+    const existing = await this.usersService.findOneByEmail(email);
+
+    if (existing) {
+      if (existing.role !== 'ANFITRIONA') {
+        throw new ConflictException('Este correo ya está registrado como usuario cliente.');
+      }
+      const { password: _, ...userWithoutPass } = existing;
+      return this.generateTokenResponse(userWithoutPass);
+    }
+
+    const newUser = await this.prisma.user.create({
+      data: {
+        email,
+        firstName,
+        lastName,
+        role: 'ANFITRIONA',
+        isProfileComplete: false,
+        wallet: { create: { balance: 0 } },
+      },
+    });
+
+    const { password: _, ...userWithoutPass } = newUser;
+    return this.generateTokenResponse(userWithoutPass);
+  }
+
+  // METODO PARA COMPLETAR PERFIL DE USUARIO QUE HIZO GOOGLE LOGIN DESDE LA APP MÓVIL
+  async completeGoogleClientProfile(
+    userId: string,
+    dto: CompleteGoogleClientProfileDto,
+  ) {
+    if (dto.password !== dto.confirmPassword) {
+      throw new BadRequestException('Las contraseñas no coinciden');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    const updated = await this.usersService.update(userId, {
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      phoneNumber: dto.phoneNumber,
+      password: hashedPassword,
+      isProfileComplete: true,
+    });
+
+    const { password: _, ...userWithoutPass } = updated;
+    return this.generateTokenResponse(userWithoutPass);
+  }
+
+  // METODO PARA COMPLETAR PERFIL DE ANFITRIONA QUE HIZO GOOGLE LOGIN DESDE LA APP MÓVIL
+  async completeGoogleAnfitrioneProfile(
+    userId: string,
+    dto: CompleteGoogleAnfitrioneProfileDto,
+    idDocFile?: Express.Multer.File,
+  ) {
+    const [existingCedula, existingUsername] = await Promise.all([
+      this.prisma.anfitrioneProfile.findUnique({ where: { cedula: dto.cedula } }),
+      this.prisma.anfitrioneProfile.findUnique({ where: { username: dto.username } }),
+    ]);
+
+    if (existingCedula) throw new ConflictException('La cédula ya está registrada.');
+    if (existingUsername) throw new ConflictException('El nombre de usuario ya está en uso.');
+
+    let idDocUrl: string | null = null;
+    let idDocPublicId: string | null = null;
+
+    if (idDocFile) {
+      const uploaded = await this.cloudinary.uploadAnfitrioneIdDoc({
+        file: idDocFile,
+        userId,
+      });
+      idDocUrl = uploaded.secureUrl;
+      idDocPublicId = uploaded.publicId;
+    }
+
+    await this.prisma.anfitrioneProfile.create({
+      data: {
+        userId,
+        dateOfBirth: new Date(dto.dateOfBirth),
+        cedula: dto.cedula,
+        username: dto.username,
+        idDocUrl,
+        idDocPublicId,
+      },
+    });
+
+    const updated = await this.usersService.update(userId, {
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      isProfileComplete: true,
+    });
+
+    if (dto.referralCode) {
+      await this.referralsService.createPendingCreatorReferralFromCode({
+        referredCreatorId: userId,
+        referralCode: dto.referralCode,
+      });
+    }
+
+    const { password: _, ...userWithoutPass } = updated;
+    return this.generateTokenResponse(userWithoutPass);
   }
 
   async completeRegistration(dto: CompleteRegistrationDto) {
@@ -222,6 +360,28 @@ export class AuthService {
 
   login(user: Omit<User, 'password'>) {
     return this.generateTokenResponse(user);
+  }
+
+  // ─── SET PASSWORD (usuarios Google sin contraseña) ────────────────────────
+
+  // METODO PARA QUE USUARIOS QUE HICIERON LOGIN CON GOOGLE DESDE LA APP MÓVIL PUEDAN ESTABLECER UNA CONTRASEÑA Y ASÍ TENER LA OPCIÓN DE LOGIN TRADICIONAL SI LO DESEAN
+  async setPassword(userId: string, dto: SetPasswordDto) {
+    if (dto.password !== dto.confirmPassword) {
+      throw new BadRequestException('Las contraseñas no coinciden');
+    }
+
+    const user = await this.usersService.findOneById(userId);
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+    if (user.password) {
+      throw new BadRequestException(
+        'Ya tienes una contraseña. Usa la opción de cambiar contraseña.',
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    await this.usersService.update(userId, { password: hashedPassword });
+
+    return { message: 'Contraseña guardada correctamente' };
   }
 
   // ─── FORGOT PASSWORD ──────────────────────────────────────────────────────

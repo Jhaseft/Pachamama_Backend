@@ -7,6 +7,8 @@ import {
   HttpStatus,
   UseInterceptors,
   UploadedFile,
+  UseGuards,
+  Request,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiTags } from '@nestjs/swagger';
@@ -17,6 +19,11 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { CompleteRegistrationDto } from './dto/complete-registration.dto';
 import { CompleteAnfitrioneRegistrationDto } from './dto/complete-anfitrione-registration.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
+import { CompleteGoogleClientProfileDto } from './dto/complete-google-client-profile.dto';
+import { CompleteGoogleAnfitrioneProfileDto } from './dto/complete-google-anfitriona-profile.dto';
+import { SetPasswordDto } from './dto/set-password.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @ApiTags('Auth')
@@ -51,6 +58,41 @@ export class AuthController {
   }
 
 
+  @Post('google-login')
+  @HttpCode(HttpStatus.OK)
+  async googleLogin(@Body() dto: GoogleLoginDto) {
+    return this.authService.googleLogin(dto.idToken);
+  }
+
+  @Post('google-login-anfitriona')
+  @HttpCode(HttpStatus.OK)
+  async googleLoginAnfitriona(@Body() dto: GoogleLoginDto) {
+    return this.authService.googleLoginAnfitriona(dto.idToken);
+  }
+
+  @Post('complete-google-client-profile')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async completeGoogleClientProfile(
+    @Request() req: any,
+    @Body() dto: CompleteGoogleClientProfileDto,
+  ) {
+    return this.authService.completeGoogleClientProfile(req.user.userId, dto);
+  }
+
+  @Post('complete-google-anfitriona-profile')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('idDoc'))
+  async completeGoogleAnfitrioneProfile(
+    @Request() req: any,
+    @Body() dto: CompleteGoogleAnfitrioneProfileDto,
+    @UploadedFile() idDoc?: Express.Multer.File,
+  ) {
+    return this.authService.completeGoogleAnfitrioneProfile(req.user.userId, dto, idDoc);
+  }
+
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto) {
@@ -62,6 +104,13 @@ export class AuthController {
       throw new UnauthorizedException('Email o contraseña incorrectos');
     }
     return this.authService.login(user);
+  }
+
+  @Post('set-password')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async setPassword(@Request() req: any, @Body() dto: SetPasswordDto) {
+    return this.authService.setPassword(req.user.userId, dto);
   }
 
   @Post('forgot-password')

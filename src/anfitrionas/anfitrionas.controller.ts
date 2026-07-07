@@ -35,7 +35,6 @@ import { GalleryImageDto } from './dto/gallery-image.dto';
 
 @ApiTags('Anfitrionas - Privado')
 @Controller('anfitrionas')
-@UseGuards(JwtAuthGuard, RolesGuard)
 export class AnfitrioneController {
   constructor(private readonly service: AnfitrioneService) { }
 
@@ -46,6 +45,7 @@ export class AnfitrioneController {
    * Archivo: idDoc (imagen o PDF del documento de identidad)
    */
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @UseInterceptors(
     FileInterceptor('idDoc', { storage: memoryStorage() }),
@@ -62,6 +62,7 @@ export class AnfitrioneController {
    * Lista todas las anfitrionas con su perfil
    */
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   findAll() {
     return this.service.findAll();
@@ -70,6 +71,7 @@ export class AnfitrioneController {
 
   // 1. OBTENER EL FEED DE HISTORIAS PARA CLIENTES (Círculos rojos/blancos)
   @Get('feed/stories')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.USER, UserRole.ADMIN, UserRole.ANFITRIONA) // Todos pueden ver el feed
   async getStoriesFeed(@Request() req): Promise<HistoryFeedResponseDto> {
     const userId = req.user?.id || req.user?.userId || req.user?.sub;
@@ -86,6 +88,7 @@ export class AnfitrioneController {
    * Devuelve el perfil propio de la anfitriona autenticada.
    */
   @Get('me/profile')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ANFITRIONA)
   getMyProfile(@Request() req) {
     const userId = req.user?.id ?? req.user?.userId ?? req.user?.sub;
@@ -98,6 +101,7 @@ export class AnfitrioneController {
    * Acepta un avatar opcional via multipart/form-data (campo: avatar).
    */
   @Patch('me/profile')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ANFITRIONA)
   @UseInterceptors(
     FileFieldsInterceptor(
@@ -124,6 +128,7 @@ export class AnfitrioneController {
 
   //CREAR UNA HISTORIA PARA UNA ANFITRIONA
   @Post('history')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ANFITRIONA)
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   async createStory(
@@ -150,6 +155,7 @@ export class AnfitrioneController {
 
   //ELIMINAR UNA HISTORIA DE UNA ANFITRIONA
   @Delete('history/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ANFITRIONA)
   async deleteStory(
     @Request() req,
@@ -164,8 +170,8 @@ export class AnfitrioneController {
 
   //OBTENER TODAS LAS HISTORIAS DE UNA ANFITRIONA
   @Get('me/stories')
-  @Roles(UserRole.ANFITRIONA)
   @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ANFITRIONA)
   async getMyStories(@Request() req) {
 
     console.log('Usuario en la petición:', req.user);
@@ -177,6 +183,7 @@ export class AnfitrioneController {
 
   // 2. MARCAR UNA HISTORIA COMO VISTA
   @Post('history/:id/view')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.USER, UserRole.ANFITRIONA)
   async markAsViewed(
     @Request() req,
@@ -200,6 +207,7 @@ export class AnfitrioneController {
    * Acepta multipart/form-data con el archivo en el campo "file".
    */
   @Post('me/gallery')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ANFITRIONA)
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
   @ApiOperation({
@@ -261,6 +269,7 @@ export class AnfitrioneController {
    * Devuelve la galería completa de la anfitriona autenticada con toda la metadata.
    */
   @Get('me/gallery')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ANFITRIONA)
   @ApiOperation({
     summary: 'Obtener galería propia',
@@ -302,6 +311,7 @@ export class AnfitrioneController {
    * Marca una imagen como la destacada del feed (sortOrder = 0, resto = 1).
    */
   @Post('me/gallery/:id/set-featured')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ANFITRIONA)
   async setFeaturedGalleryImage(
     @Request() req,
@@ -317,6 +327,7 @@ export class AnfitrioneController {
    * Borra el archivo en Cloudinary y el registro en la BD.
    */
   @Delete('me/gallery/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ANFITRIONA)
   @HttpCode(204)
   async deleteMyGalleryImage(
@@ -332,6 +343,7 @@ export class AnfitrioneController {
    * Actualiza los metadatos de una imagen de la galería (isPremium, unlockCredits, isVisible, sortOrder).
    */
   @Patch('me/gallery/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ANFITRIONA)
   async updateMyGalleryImage(
     @Request() req,
@@ -348,6 +360,7 @@ export class AnfitrioneController {
    * Soporta cursor pagination: ?cursor=<lastId>&limit=20
    */
   @Get('clients')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ANFITRIONA)
   getClients(
     @Request() req,
@@ -367,6 +380,7 @@ export class AnfitrioneController {
    * Obtiene una anfitriona por su userId
    */
   @Get(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   findOne(@Param('id') id: string) {
     return this.service.findOne(id);

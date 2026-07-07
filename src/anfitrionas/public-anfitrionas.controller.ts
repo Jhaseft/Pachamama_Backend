@@ -14,7 +14,35 @@ import { AnfitrionePublicDetailDto } from './dto/anfitriona-public-detail.dto';
 @ApiTags('Anfitrionas - Público')
 @Controller('anfitrionas/public')
 export class PublicAnfitrioneController {
-  constructor(private readonly service: AnfitrioneService) {}
+  constructor(private readonly service: AnfitrioneService) { }
+
+  /**
+   * GET /anfitrionas/public/username/:username
+   * Perfil público por username (para deep links).
+   * No requiere autenticación; si hay token válido se puebla isLiked.
+   * DEBE IR ANTES DE @Get(':id') para que NestJS lo reconozca primero.
+   */
+  @Get('username/:username')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({
+    summary: 'Perfil público por username',
+    description: 'Devuelve información pública detallada de una anfitriona buscando por username.',
+  })
+  @ApiParam({ name: 'username', description: 'Username de la anfitriona' })
+  @ApiResponse({
+    status: 200,
+    description: 'Perfil de la anfitriona',
+    type: AnfitrionePublicDetailDto,
+  })
+  @ApiResponse({ status: 404, description: 'Anfitriona no encontrada' })
+  findOneByUsername(
+    @Param('username') username: string,
+    @Request() req,
+  ): Promise<AnfitrionePublicDetailDto> {
+    const currentUserId: string | undefined =
+      req.user?.id ?? req.user?.userId ?? req.user?.sub;
+    return this.service.findOnePublic(username, currentUserId);
+  }
 
   /**
    * GET /anfitrionas/public
@@ -60,34 +88,20 @@ export class PublicAnfitrioneController {
 
   /**
    * GET /anfitrionas/public/:id
-   * Perfil público detallado de una anfitriona (HU2).
+   * Perfil público detallado de una anfitriona por UUID (HU2).
    * No requiere autenticación; si hay token válido se puebla isLiked.
    */
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
-    summary: 'Perfil público de una anfitriona',
-    description: 'Devuelve información pública detallada de una anfitriona activa (HU2).',
+    summary: 'Perfil público de una anfitriona por UUID',
+    description: 'Devuelve información pública detallada de una anfitriona activa por UUID.',
   })
   @ApiParam({ name: 'id', description: 'UUID del usuario anfitriona' })
   @ApiResponse({
     status: 200,
     description: 'Perfil de la anfitriona',
     type: AnfitrionePublicDetailDto,
-    example: {
-      id: '550e8400-e29b-41d4-a716-446655440000',
-      name: 'Maria Lopez',
-      username: 'maria_lopez',
-      age: 28,
-      bio: 'Conversaciones alegres 🌸✨',
-      avatar: 'https://res.cloudinary.com/demo/image/upload/v1/avatar.jpg',
-      images: [
-        'https://res.cloudinary.com/demo/image/upload/v1/img1.jpg',
-        'https://res.cloudinary.com/demo/image/upload/v1/img2.jpg',
-      ],
-      rateCredits: 10,
-      isOnline: true,
-    },
   })
   @ApiResponse({ status: 404, description: 'Anfitriona no encontrada' })
   findOne(

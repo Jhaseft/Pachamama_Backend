@@ -502,7 +502,7 @@ export class AnfitrioneService {
   async findOnePublic(id: string, currentUserId?: string): Promise<AnfitrionePublicDetailDto> {
     const user = await this.prisma.user.findFirst({
       where: {
-        id,
+        OR: [{ id }, { anfitrionaProfile: { username: { equals: id, mode: 'insensitive' } } }],
         role: 'ANFITRIONA',
         isActive: true,
         isProfileComplete: true,
@@ -548,7 +548,7 @@ export class AnfitrioneService {
     if (currentUserId && rawImages.length > 0) {
       const [imageIds, subscribed] = await Promise.all([
         Promise.resolve(rawImages.map((img) => img.id)),
-        this.subscriptionsService.hasActiveSubscription(currentUserId, id),
+        this.subscriptionsService.hasActiveSubscription(currentUserId, user.id),
       ]);
       hasSubscription = subscribed;
 
@@ -575,7 +575,7 @@ export class AnfitrioneService {
     let isLiked = false;
     if (currentUserId) {
       const existing = await this.prisma.like.findUnique({
-        where: { userId_anfitrionaId: { userId: currentUserId, anfitrionaId: id } },
+        where: { userId_anfitrionaId: { userId: currentUserId, anfitrionaId: user.id } },
       });
       isLiked = !!existing;
     }

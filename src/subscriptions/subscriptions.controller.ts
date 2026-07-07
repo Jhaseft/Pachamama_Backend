@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { SubscriptionsService } from './subscriptions.service';
@@ -9,7 +9,6 @@ interface JwtUser {
   role: string;
 }
 
-@UseGuards(JwtAuthGuard)
 @Controller('subscriptions')
 export class SubscriptionsController {
   constructor(private readonly subscriptionsService: SubscriptionsService) {}
@@ -17,12 +16,14 @@ export class SubscriptionsController {
   // ─── Anfitriona ──────────────────────────────────────────────────────────
 
   // GET /subscriptions/my-plan — ver su plan actual
+  @UseGuards(JwtAuthGuard)
   @Get('my-plan')
   getMySubscription(@CurrentUser() user: JwtUser) {
     return this.subscriptionsService.getMySubscription(user.userId);
   }
 
   // PUT /subscriptions/my-plan — crear o editar precio del plan
+  @UseGuards(JwtAuthGuard)
   @Put('my-plan')
   upsertMySubscription(
     @CurrentUser() user: JwtUser,
@@ -32,6 +33,7 @@ export class SubscriptionsController {
   }
 
   // PATCH /subscriptions/my-plan/toggle — activar/desactivar su plan
+  @UseGuards(JwtAuthGuard)
   @Patch('my-plan/toggle')
   toggleMySubscription(@CurrentUser() user: JwtUser) {
     return this.subscriptionsService.toggleMySubscription(user.userId);
@@ -40,18 +42,20 @@ export class SubscriptionsController {
   // ─── Cliente ─────────────────────────────────────────────────────────────
 
   // GET /subscriptions/my-subscriptions — todas las suscripciones del cliente
+  @UseGuards(JwtAuthGuard)
   @Get('my-subscriptions')
   getMySubscriptions(@CurrentUser() user: JwtUser) {
     return this.subscriptionsService.getMySubscriptions(user.userId);
   }
 
-  // GET /subscriptions/public/:anfitrionaId — ver el plan de una anfitriona
+  // GET /subscriptions/public/:anfitrionaId — ver el plan de una anfitriona (sin auth)
   @Get('public/:anfitrionaId')
-  getPublicSubscription(@Param('anfitrionaId') anfitrionaId: string) {
+  getPublicSubscription(@Param('anfitrionaId', ParseUUIDPipe) anfitrionaId: string) {
     return this.subscriptionsService.getPublicSubscription(anfitrionaId);
   }
 
   // POST /subscriptions/:anfitrionaId/buy — comprar suscripción
+  @UseGuards(JwtAuthGuard)
   @Post(':anfitrionaId/buy')
   buySubscription(
     @CurrentUser() user: JwtUser,
@@ -61,6 +65,7 @@ export class SubscriptionsController {
   }
 
   // GET /subscriptions/:anfitrionaId/status — verificar si tiene suscripción activa
+  @UseGuards(JwtAuthGuard)
   @Get(':anfitrionaId/status')
   getSubscriptionStatus(
     @CurrentUser() user: JwtUser,

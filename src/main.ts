@@ -40,12 +40,13 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
-  // Validación global mejorada
+  // Validación global mejorada - NO validar parámetros de ruta
   app.useGlobalPipes( 
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      skipMissingProperties: true,
     }),
   );
 

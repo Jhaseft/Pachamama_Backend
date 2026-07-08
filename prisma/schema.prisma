@@ -53,7 +53,7 @@ model User {
 
   @@map("users")
 }
-
+ 
 model UserProfile {
   id             String   @id @default(uuid())
   userId         String   @unique
@@ -147,6 +147,7 @@ model AnfitrioneProfile {
   subscription   AnfitrioneSubscription?
   bankAccounts   BankAccount[]
   servicePrices  ServicePrice[]
+  socialLinks    AnfitrioneProfileSocialLink[]
 
   @@map("anfitrione_profiles")
 }
@@ -503,6 +504,32 @@ model WithdrawalRequest {
   wallet          Wallet           @relation(fields: [walletId], references: [id])
 
   @@map("withdrawal_requests")
+}
+
+model SocialNetwork {
+  id        String                          @id @default(uuid())
+  name      String                          @unique
+  icon      String?
+  iconPublicId String?
+  createdAt DateTime                        @default(now())
+  updatedAt DateTime                        @updatedAt
+  links     AnfitrioneProfileSocialLink[]
+
+  @@map("social_networks")
+}
+
+model AnfitrioneProfileSocialLink {
+  id                String            @id @default(uuid())
+  anfitrionaProfileId String
+  socialNetworkId   String
+  url               String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  anfitrionaProfile AnfitrioneProfile @relation(fields: [anfitrionaProfileId], references: [id], onDelete: Cascade)
+  socialNetwork     SocialNetwork     @relation(fields: [socialNetworkId], references: [id], onDelete: Cascade)
+
+  @@unique([anfitrionaProfileId, socialNetworkId])
+  @@map("anfitrione_profile_social_links")
 }
 
 enum TransactionType {

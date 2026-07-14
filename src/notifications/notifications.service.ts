@@ -139,38 +139,44 @@ export class NotificationsService implements OnModuleInit {
             .catch(() => {});
     }
 
-    // Todos los destinos de un usuario: su móvil + cada navegador registrado.
-    async getUserTokens(userId: string): Promise<string[]> {
-        const [user, credentials] = await Promise.all([
-            this.prisma.user.findUnique({
-                where: { id: userId },
-                select: { fcmToken: true },
-            }),
-            this.prisma.webPushCredential.findMany({
-                where: { userId },
-                select: { token: true },
-            }),
-        ]);
+    /**
+     * Envío SOLO DATOS a navegadores.
+     *
+     * Un push con bloque `notification` lo muestra el navegador por su cuenta, y
+     * además dispara onBackgroundMessage en el service worker, que la muestra otra
+     * vez: el usuario ve la notificación duplicada. Mandando solo `data`, el
+     * service worker es el único que la pinta (y así controla icono, clic y las
+     * llamadas persistentes). El título y el cuerpo viajan dentro de `data`.
+     */
+    private async sendDataOnlyToWeb(tokens: string[], title: string, body: string, data?: any) {
+        if (!admin.apps.length || !tokens.length) return;
 
-        const tokens = [
-            ...(user?.fcmToken ? [user.fcmToken] : []),
-            ...credentials.map((c) => c.token),
-        ];
+        const stringData = data
+            ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
+            : {};
 
-        return [...new Set(tokens)];
+        for (let i = 0; i < tokens.length; i += 500) {
+            const chunk = tokens.slice(i, i + 500);
+            try {
+                const response = await admin.messaging().sendEachForMulticast({
+                    tokens: chunk,
+                    data: { ...stringData, title, body },
+                    webpush: { headers: { Urgency: 'high' } },
+                });
+
+                response.responses.forEach((resp, idx) => {
+                    if (!resp.success && resp.error?.code === 'messaging/registration-token-not-registered') {
+                        this.removeDeadToken(chunk[idx]);
+                    }
+                });
+            } catch (error) {
+                console.error('🔥 Error enviando push web:', error);
+            }
+        }
     }
 
-    // Notifica a un usuario en todos sus dispositivos.
-    async sendToUser(userId: string, title: string, body: string, data?: any) {
-        const tokens = await this.getUserTokens(userId);
-        if (!tokens.length) return;
-        await this.sendMulticastNotification(tokens, title, body, data);
-    }
-
-    // Notifica a varios usuarios (p. ej. suscriptores o admins).
-    async sendToUsers(userIds: string[], title: string, body: string, data?: any) {
-        if (!userIds.length) return;
-
+    // Tokens de un usuario, separados por destino.
+    private async getTokensByPlatform(userIds: string[]) {
         const [users, credentials] = await Promise.all([
             this.prisma.user.findMany({
                 where: { id: { in: userIds }, fcmToken: { not: null } },
@@ -182,12 +188,27 @@ export class NotificationsService implements OnModuleInit {
             }),
         ]);
 
-        const tokens = [
-            ...users.map((u) => u.fcmToken!),
-            ...credentials.map((c) => c.token),
-        ];
+        const web = [...new Set(credentials.map((c) => c.token))];
+        const webSet = new Set(web);
+        const mobile = [...new Set(users.map((u) => u.fcmToken!))].filter((t) => !webSet.has(t));
 
-        if (!tokens.length) return;
-        await this.sendMulticastNotification([...new Set(tokens)], title, body, data);
+        return { mobile, web };
+    }
+
+    // Notifica a un usuario en todos sus dispositivos (móvil y navegadores).
+    async sendToUser(userId: string, title: string, body: string, data?: any) {
+        await this.sendToUsers([userId], title, body, data);
+    }
+
+    // Notifica a varios usuarios (p. ej. suscriptores o admins).
+    async sendToUsers(userIds: string[], title: string, body: string, data?: any) {
+        if (!userIds.length) return;
+
+        const { mobile, web } = await this.getTokensByPlatform(userIds);
+
+        await Promise.all([
+            mobile.length ? this.sendMulticastNotification(mobile, title, body, data) : null,
+            web.length ? this.sendDataOnlyToWeb(web, title, body, data) : null,
+        ]);
     }
 }

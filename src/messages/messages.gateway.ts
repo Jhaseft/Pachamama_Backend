@@ -198,13 +198,24 @@ export class MessagesGateway implements OnGatewayDisconnect {
     this.server.to(`user_${data.receiverId}`).emit('incoming_call', data);
     client.emit('call_ringing', { callId: data.callId });
 
-    // Push a la anfitriona por si tiene la app cerrada
+    // Push a la anfitriona por si tiene la app cerrada. Va el payload completo:
+    // si la web estaba cerrada no recibió el evento del socket, así que necesita
+    // reconstruir la llamada entrante a partir de la notificación.
     const label = data.callType === 'VIDEO_CALL' ? 'Video llamada' : 'Llamada de voz';
     this.notificationsService.sendToUser(
       data.receiverId,
       `📞 ${label} entrante`,
       `${data.callerName} te está llamando`,
-      { callId: data.callId, callerId: data.callerId, type: 'INCOMING_CALL' }
+      {
+        type: 'INCOMING_CALL',
+        callId: data.callId,
+        callerId: data.callerId,
+        receiverId: data.receiverId,
+        callType: data.callType,
+        callerName: data.callerName,
+        callerAvatar: data.callerAvatar ?? '',
+        pricePerMinute: data.pricePerMinute,
+      }
     );
   }
 

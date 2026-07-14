@@ -278,6 +278,32 @@ export class UsersService {
     });
   }
 
+  // REGISTRAR CREDENCIAL PUSH DE NAVEGADOR (web)
+  // Upsert por token: registrar dos veces el mismo navegador no duplica filas, y
+  // si otro usuario inicia sesión en ese navegador, el token cambia de dueño.
+  async registerWebPushCredential(
+    userId: string,
+    token: string,
+    userAgent?: string,
+  ): Promise<void> {
+    const clean = token.trim();
+    if (!clean) return;
+
+    await this.prisma.webPushCredential.upsert({
+      where: { token: clean },
+      create: { userId, token: clean, userAgent },
+      update: { userId, userAgent, lastSeenAt: new Date() },
+    });
+  }
+
+  // ELIMINAR CREDENCIAL PUSH DE NAVEGADOR (logout o permiso revocado).
+  // Filtra por userId para que nadie pueda borrar el token de otro.
+  async removeWebPushCredential(userId: string, token: string): Promise<void> {
+    await this.prisma.webPushCredential.deleteMany({
+      where: { token: token.trim(), userId },
+    });
+  }
+
   //OBTENER LOS MEOTODOS DE PAGO
   async findAllActive() {
     try {

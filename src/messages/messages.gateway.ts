@@ -199,19 +199,13 @@ export class MessagesGateway implements OnGatewayDisconnect {
     client.emit('call_ringing', { callId: data.callId });
 
     // Push a la anfitriona por si tiene la app cerrada
-    const anfitriona = await this.prisma.user.findUnique({
-      where: { id: data.receiverId },
-      select: { fcmToken: true },
-    });
-    if (anfitriona?.fcmToken) {
-      const label = data.callType === 'VIDEO_CALL' ? 'Video llamada' : 'Llamada de voz';
-      this.notificationsService.sendPushNotification(
-        anfitriona.fcmToken,
-        `📞 ${label} entrante`,
-        `${data.callerName} te está llamando`,
-        { callId: data.callId, callerId: data.callerId, type: 'INCOMING_CALL' }
-      );
-    }
+    const label = data.callType === 'VIDEO_CALL' ? 'Video llamada' : 'Llamada de voz';
+    this.notificationsService.sendToUser(
+      data.receiverId,
+      `📞 ${label} entrante`,
+      `${data.callerName} te está llamando`,
+      { callId: data.callId, callerId: data.callerId, type: 'INCOMING_CALL' }
+    );
   }
 
   @SubscribeMessage('call_accepted')
@@ -227,15 +221,16 @@ export class MessagesGateway implements OnGatewayDisconnect {
     // Iniciar intervalo de advertencia cada 2 minutos
     if (session) {
       session.warningInterval = setInterval(async () => {
+        // La consulta sigue haciendo falta: el saldo va en el cuerpo del aviso.
         const caller = await this.prisma.user.findUnique({
           where: { id: session.callerId },
-          select: { fcmToken: true, wallet: { select: { balance: true } } },
+          select: { wallet: { select: { balance: true } } },
         });
 
-        if (caller?.fcmToken && caller.wallet) {
+        if (caller?.wallet) {
           const balance = Number(caller.wallet.balance);
-          this.notificationsService.sendPushNotification(
-            caller.fcmToken,
+          this.notificationsService.sendToUser(
+            session.callerId,
             '⏱️ Llamada en curso',
             `Te quedan ${balance} créditos`,
             { callId: data.callId, type: 'CALL_WARNING', balance: balance }
@@ -245,18 +240,12 @@ export class MessagesGateway implements OnGatewayDisconnect {
     }
 
     // Push al cliente
-    const caller = await this.prisma.user.findUnique({
-      where: { id: data.callerId },
-      select: { fcmToken: true },
-    });
-    if (caller?.fcmToken) {
-      this.notificationsService.sendPushNotification(
-        caller.fcmToken,
-        '✅ Llamada aceptada',
-        `${data.anfitrionaName} aceptó tu llamada`,
-        { callId: data.callId, type: 'CALL_ACCEPTED' }
-      );
-    }
+    this.notificationsService.sendToUser(
+      data.callerId,
+      '✅ Llamada aceptada',
+      `${data.anfitrionaName} aceptó tu llamada`,
+      { callId: data.callId, type: 'CALL_ACCEPTED' }
+    );
   }
 
   @SubscribeMessage('call_rejected')
@@ -270,18 +259,12 @@ export class MessagesGateway implements OnGatewayDisconnect {
     this.server.to(`user_${data.callerId}`).emit('call_rejected', { callId: data.callId });
 
     // Push al cliente
-    const caller = await this.prisma.user.findUnique({
-      where: { id: data.callerId },
-      select: { fcmToken: true },
-    });
-    if (caller?.fcmToken) {
-      this.notificationsService.sendPushNotification(
-        caller.fcmToken,
-        '❌ Llamada rechazada',
-        `${data.anfitrionaName} no está disponible`,
-        { callId: data.callId, type: 'CALL_REJECTED' }
-      );
-    }
+    this.notificationsService.sendToUser(
+      data.callerId,
+      '❌ Llamada rechazada',
+      `${data.anfitrionaName} no está disponible`,
+      { callId: data.callId, type: 'CALL_REJECTED' }
+    );
   }
 
   @SubscribeMessage('call_ended')
@@ -319,29 +302,18 @@ export class MessagesGateway implements OnGatewayDisconnect {
         this.server.to(`user_${session.anfitrionaId}`).emit('call_billed', billingResult);
 
         // Push a ambos con el resultado de facturación
-        const [caller, anfitriona] = await Promise.all([
-          this.prisma.user.findUnique({ where: { id: session.callerId }, select: { fcmToken: true } }),
-          this.prisma.user.findUnique({ where: { id: session.anfitrionaId }, select: { fcmToken: true } }),
-        ]);
-
-        const billingMsg = `${billing.minutesBilled} min · ${billing.creditsCharged} créditos`;
-
-        if (caller?.fcmToken) {
-          this.notificationsService.sendPushNotification(
-            caller.fcmToken,
-            '💰 Llamada finalizada',
-            `Se cobraron ${billing.creditsCharged} créditos · ${billing.minutesBilled} min`,
-            { callId: data.callId, type: 'CALL_BILLED', ...billingResult }
-          );
-        }
-        if (anfitriona?.fcmToken) {
-          this.notificationsService.sendPushNotification(
-            anfitriona.fcmToken,
-            '💰 Llamada finalizada',
-            `Ganaste ${billing.creditsCharged} créditos · ${billing.minutesBilled} min`,
-            { callId: data.callId, type: 'CALL_BILLED', ...billingResult }
-          );
-        }
+        this.notificationsService.sendToUser(
+          session.callerId,
+          '💰 Llamada finalizada',
+          `Se cobraron ${billing.creditsCharged} créditos · ${billing.minutesBilled} min`,
+          { callId: data.callId, type: 'CALL_BILLED', ...billingResult }
+        );
+        this.notificationsService.sendToUser(
+          session.anfitrionaId,
+          '💰 Llamada finalizada',
+          `Ganaste ${billing.creditsCharged} créditos · ${billing.minutesBilled} min`,
+          { callId: data.callId, type: 'CALL_BILLED', ...billingResult }
+        );
       } catch (err) {
         console.error('[CallBilling] Error al facturar llamada:', err);
       }

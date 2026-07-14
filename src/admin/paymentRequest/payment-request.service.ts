@@ -26,7 +26,7 @@ export class RechargeRequestService {
                 wallet: {
                     include: {
                         user: {
-                            select: { email: true, firstName: true, fcmToken: true }
+                            select: { id: true, email: true, firstName: true }
                         }
                     }
                 }
@@ -80,16 +80,14 @@ export class RechargeRequestService {
                 );
             }
 
-            if (withdrawalRequest.wallet.user.fcmToken) {
-
-                //esto se envia a firebase para que lo reciba la app móvil y muestre una notificación push al usuario informando que su solicitud de retiro fue rechazada.
-                this.notificationsService.sendPushNotification(
-                    withdrawalRequest.wallet.user.fcmToken,
-                    '❌ Solicitud de retiro rechazada',
-                    rejectionReason ?? 'Tu solicitud de retiro fue rechazada.',
-                    { withdrawalRequestId: id, type: 'WITHDRAWAL_REJECTED' }
-                );
-            }
+            //push a todos sus dispositivos (móvil y navegadores) informando que su
+            //solicitud de retiro fue rechazada.
+            this.notificationsService.sendToUser(
+                withdrawalRequest.wallet.user.id,
+                '❌ Solicitud de retiro rechazada',
+                rejectionReason ?? 'Tu solicitud de retiro fue rechazada.',
+                { withdrawalRequestId: id, type: 'WITHDRAWAL_REJECTED' }
+            );
 
             return { ...updated, bankAccountId: updated.bankAccountId.toString() };
         }
@@ -134,14 +132,12 @@ export class RechargeRequestService {
                 );
             }
 
-            if (withdrawalRequest.wallet.user.fcmToken) {
-                this.notificationsService.sendPushNotification(
-                    withdrawalRequest.wallet.user.fcmToken,
-                    '✅ Solicitud de retiro aprobada',
-                    `Tu retiro de ${credits} créditos fue procesado exitosamente.`,
-                    { withdrawalRequestId: id, type: 'WITHDRAWAL_APPROVED' }
-                );
-            }
+            this.notificationsService.sendToUser(
+                withdrawalRequest.wallet.user.id,
+                '✅ Solicitud de retiro aprobada',
+                `Tu retiro de ${credits} créditos fue procesado exitosamente.`,
+                { withdrawalRequestId: id, type: 'WITHDRAWAL_APPROVED' }
+            );
 
             return { message: 'Retiro aprobado con éxito.', request: { ...result, bankAccountId: result.bankAccountId.toString() } };
 

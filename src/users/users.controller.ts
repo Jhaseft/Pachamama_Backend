@@ -10,6 +10,8 @@ import {
   Body,
   BadRequestException,
   Patch,
+  Post,
+  Delete,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from './users.service';
@@ -20,6 +22,7 @@ import { UserRole } from '@prisma/client';
 import { EditPhoneNumberDto } from './dto/edit-phone-number.dto';
 import { EditPasswordDto } from './dto/edit-password.dto';
 import { UpdateFcmTokenDto } from './dto/update-fcm-token.dto';
+import { RegisterWebPushDto } from './dto/register-web-push.dto';
 import * as bcrypt from 'bcrypt';
 
 interface JwtUser {
@@ -149,6 +152,34 @@ export class UsersController {
     @Body() body: UpdateFcmTokenDto,
   ) {
     await this.usersService.updateFcmToken(user.userId, body.fcmToken);
+    return { success: true };
+  }
+
+  // REGISTRAR CREDENCIAL PUSH DEL NAVEGADOR (web)
+  // A diferencia del fcmToken del móvil (una sola columna en users), un usuario
+  // puede tener varios navegadores registrados a la vez.
+  @UseGuards(JwtAuthGuard)
+  @Post('push-credentials')
+  async registerWebPush(
+    @CurrentUser() user: JwtUser,
+    @Body() body: RegisterWebPushDto,
+  ) {
+    await this.usersService.registerWebPushCredential(
+      user.userId,
+      body.token,
+      body.userAgent,
+    );
+    return { success: true };
+  }
+
+  // ELIMINAR CREDENCIAL PUSH DEL NAVEGADOR (al cerrar sesión o revocar permiso)
+  @UseGuards(JwtAuthGuard)
+  @Delete('push-credentials/:token')
+  async removeWebPush(
+    @CurrentUser() user: JwtUser,
+    @Param('token') token: string,
+  ) {
+    await this.usersService.removeWebPushCredential(user.userId, token);
     return { success: true };
   }
 

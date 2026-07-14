@@ -226,43 +226,35 @@ export class MessagesService {
     });
     console.log('[createMessage] price guardado en BD:', message.price);
 
-    // Obtener fcmToken del receptor para notificarle
-    const receiver = await this.prisma.user.findUnique({
-      where: { id: receiverId },
-      select: { fcmToken: true },
-    });
-
-    if (receiver?.fcmToken) {
-      // Notificación según tipo de mensaje
-      if (imageUrl && isLocked) {
-        this.notificationsService.sendPushNotification(
-          receiver.fcmToken,
-          '📷 Nueva foto bloqueada',
-          'Tienes una foto esperándote · desbloquéala con créditos',
-          { conversationId: conversation.id, type: 'NEW_LOCKED_MESSAGE' }
-        );
-      } else if (imageUrl) {
-        this.notificationsService.sendPushNotification(
-          receiver.fcmToken,
-          '📷 Nueva foto',
-          'Te enviaron una foto',
-          { conversationId: conversation.id, type: 'NEW_MESSAGE' }
-        );
-      } else if (isLocked) {
-        this.notificationsService.sendPushNotification(
-          receiver.fcmToken,
-          '🎁 Nuevo regalo',
-          'Tienes un regalo esperándote',
-          { conversationId: conversation.id, type: 'NEW_LOCKED_MESSAGE' }
-        );
-      } else {
-        this.notificationsService.sendPushNotification(
-          receiver.fcmToken,
-          '💬 Nuevo mensaje',
-          'Tienes un nuevo mensaje',
-          { conversationId: conversation.id, type: 'NEW_MESSAGE' }
-        );
-      }
+    // Notificar al receptor en todos sus dispositivos (móvil + navegadores)
+    if (imageUrl && isLocked) {
+      this.notificationsService.sendToUser(
+        receiverId,
+        '📷 Nueva foto bloqueada',
+        'Tienes una foto esperándote · desbloquéala con créditos',
+        { conversationId: conversation.id, type: 'NEW_LOCKED_MESSAGE' }
+      );
+    } else if (imageUrl) {
+      this.notificationsService.sendToUser(
+        receiverId,
+        '📷 Nueva foto',
+        'Te enviaron una foto',
+        { conversationId: conversation.id, type: 'NEW_MESSAGE' }
+      );
+    } else if (isLocked) {
+      this.notificationsService.sendToUser(
+        receiverId,
+        '🎁 Nuevo regalo',
+        'Tienes un regalo esperándote',
+        { conversationId: conversation.id, type: 'NEW_LOCKED_MESSAGE' }
+      );
+    } else {
+      this.notificationsService.sendToUser(
+        receiverId,
+        '💬 Nuevo mensaje',
+        'Tienes un nuevo mensaje',
+        { conversationId: conversation.id, type: 'NEW_MESSAGE' }
+      );
     }
 
     return { ...message, conversationId: conversation.id };
@@ -437,19 +429,12 @@ export class MessagesService {
     }
 
     // Notificar a la anfitriona que su mensaje fue desbloqueado
-    const anfitriona = await this.prisma.user.findUnique({
-      where: { id: message.senderId },
-      select: { fcmToken: true },
-    });
-
-    if (anfitriona?.fcmToken) {
-      this.notificationsService.sendPushNotification(
-        anfitriona.fcmToken,
-        '💰 Mensaje desbloqueado',
-        `${clientName} desbloqueó tu mensaje · ganaste ${anfitrionaShare} créditos`,
-        { conversationId: message.conversationId, type: 'MESSAGE_UNLOCKED' }
-      );
-    }
+    this.notificationsService.sendToUser(
+      message.senderId,
+      '💰 Mensaje desbloqueado',
+      `${clientName} desbloqueó tu mensaje · ganaste ${anfitrionaShare} créditos`,
+      { conversationId: message.conversationId, type: 'MESSAGE_UNLOCKED' }
+    );
 
     return { success: true, text: message.text };
   }
@@ -579,18 +564,12 @@ export class MessagesService {
     }
 
     // Notificar a la anfitriona
-    const anfitriona = await this.prisma.user.findUnique({
-      where: { id: message.senderId },
-      select: { fcmToken: true },
-    });
-    if (anfitriona?.fcmToken) {
-      this.notificationsService.sendPushNotification(
-        anfitriona.fcmToken,
-        '💰 Imagen desbloqueada',
-        `${clientName} desbloqueó tu foto · ganaste ${anfitrionaShare} créditos`,
-        { conversationId: message.conversationId, type: 'IMAGE_UNLOCKED' }
-      );
-    }
+    this.notificationsService.sendToUser(
+      message.senderId,
+      '💰 Imagen desbloqueada',
+      `${clientName} desbloqueó tu foto · ganaste ${anfitrionaShare} créditos`,
+      { conversationId: message.conversationId, type: 'IMAGE_UNLOCKED' }
+    );
 
     return { alreadyUnlocked: false, imageUrl: message.imageUrl };
   }

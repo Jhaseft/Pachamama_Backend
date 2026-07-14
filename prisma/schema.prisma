@@ -42,6 +42,7 @@ model User {
   userProfile           UserProfile?
   subscriptions         UserSubscription[]
   wallet                Wallet?
+  webPushCredentials    WebPushCredential[]
   creatorReferralSetting      CreatorReferralSetting?
   referralsAsCreator          CreatorReferral[]           @relation("CreatorReferrer")
   referralAsReferred          CreatorReferral?            @relation("CreatorReferred")
@@ -99,6 +100,21 @@ model Message {
   sender              User                 @relation("SentMessages", fields: [senderId], references: [id])
 
   @@map("messages")
+}
+
+/// Tokens FCM de navegador (web). El móvil sigue usando User.fcmToken:
+/// un usuario tiene 1 token móvil y N navegadores registrados.
+model WebPushCredential {
+  id         String   @id @default(uuid())
+  userId     String
+  token      String   @unique
+  userAgent  String?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("web_push_credentials")
 }
 
 model Like {

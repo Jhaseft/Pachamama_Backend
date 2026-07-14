@@ -297,17 +297,17 @@ export class WalletService {
         where: { id: userId },
         select: { firstName: true, lastName: true },
       }),
+      // Sin filtrar por fcmToken: un admin que solo use la web no lo tiene.
       this.prisma.user.findMany({
-        where: { role: 'ADMIN', isActive: true, fcmToken: { not: null } },
-        select: { fcmToken: true },
+        where: { role: 'ADMIN', isActive: true },
+        select: { id: true },
       }),
     ]);
 
     const anfitrionaName = [anfitriona?.firstName, anfitriona?.lastName].filter(Boolean).join(' ') || 'Una anfitriona';
-    const adminTokens = admins.map(a => a.fcmToken!);
 
-    this.notificationsService.sendMulticastNotification(
-      adminTokens,
+    this.notificationsService.sendToUsers(
+      admins.map((a) => a.id),
       '💸 Nueva solicitud de retiro',
       `${anfitrionaName} solicitó un retiro de ${dto.credits} créditos (S/ ${soles.toFixed(2)})`,
       { withdrawalRequestId: (request as any).id, type: 'NEW_WITHDRAWAL_REQUEST' }

@@ -63,14 +63,10 @@ export class NotificationsService implements OnModuleInit {
                     failed: response.failureCount,
                 });
 
-                // Limpiar tokens obsoletos de la DB
+                // Limpiar tokens obsoletos de la DB (móvil y navegadores)
                 response.responses.forEach((resp, idx) => {
                     if (!resp.success && resp.error?.code === 'messaging/registration-token-not-registered') {
-                        const invalidToken = chunk[idx];
-                        this.prisma.user.updateMany({
-                            where: { fcmToken: invalidToken },
-                            data: { fcmToken: null },
-                        }).catch(() => {});
+                        this.removeDeadToken(chunk[idx]);
                     }
                 });
             } catch (error) {
@@ -130,5 +126,68 @@ export class NotificationsService implements OnModuleInit {
             // 🔴 IMPORTANTE: NO lanzar error
             return null;
         }
+    }
+
+    // Borra un token que FCM reporta como inexistente: puede ser el del móvil
+    // (users.fcmToken) o el de un navegador (web_push_credentials).
+    private removeDeadToken(token: string) {
+        this.prisma.user
+            .updateMany({ where: { fcmToken: token }, data: { fcmToken: null } })
+            .catch(() => {});
+        this.prisma.webPushCredential
+            .deleteMany({ where: { token } })
+            .catch(() => {});
+    }
+
+    // Todos los destinos de un usuario: su móvil + cada navegador registrado.
+    async getUserTokens(userId: string): Promise<string[]> {
+        const [user, credentials] = await Promise.all([
+            this.prisma.user.findUnique({
+                where: { id: userId },
+                select: { fcmToken: true },
+            }),
+            this.prisma.webPushCredential.findMany({
+                where: { userId },
+                select: { token: true },
+            }),
+        ]);
+
+        const tokens = [
+            ...(user?.fcmToken ? [user.fcmToken] : []),
+            ...credentials.map((c) => c.token),
+        ];
+
+        return [...new Set(tokens)];
+    }
+
+    // Notifica a un usuario en todos sus dispositivos.
+    async sendToUser(userId: string, title: string, body: string, data?: any) {
+        const tokens = await this.getUserTokens(userId);
+        if (!tokens.length) return;
+        await this.sendMulticastNotification(tokens, title, body, data);
+    }
+
+    // Notifica a varios usuarios (p. ej. suscriptores o admins).
+    async sendToUsers(userIds: string[], title: string, body: string, data?: any) {
+        if (!userIds.length) return;
+
+        const [users, credentials] = await Promise.all([
+            this.prisma.user.findMany({
+                where: { id: { in: userIds }, fcmToken: { not: null } },
+                select: { fcmToken: true },
+            }),
+            this.prisma.webPushCredential.findMany({
+                where: { userId: { in: userIds } },
+                select: { token: true },
+            }),
+        ]);
+
+        const tokens = [
+            ...users.map((u) => u.fcmToken!),
+            ...credentials.map((c) => c.token),
+        ];
+
+        if (!tokens.length) return;
+        await this.sendMulticastNotification([...new Set(tokens)], title, body, data);
     }
 }

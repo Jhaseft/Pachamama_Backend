@@ -17,8 +17,11 @@ export class GoogleAuthService {
   constructor(private configService: ConfigService) {
     const webClientId = this.configService.get<string>('GOOGLE_MOBILE_WEB_CLIENT_ID') ?? '';
     const iosClientId = this.configService.get<string>('GOOGLE_MOBILE_IOS_CLIENT_ID') ?? '';
+    // Client id del navegador (Pacha-Web). El token que emite Google Identity
+    // Services en la web trae este `aud`; sin él, verifyIdToken lo rechaza.
+    const browserWebClientId = this.configService.get<string>('GOOGLE_WEB_CLIENT_ID') ?? '';
 
-    this.audiences = [webClientId, iosClientId].filter(Boolean);
+    this.audiences = [webClientId, iosClientId, browserWebClientId].filter(Boolean);
     this.client = new OAuth2Client();
   }
 

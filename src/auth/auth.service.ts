@@ -95,11 +95,14 @@ export class AuthService {
       return this.generateTokenResponse(userWithoutPass);
     }
 
+    // La cuenta queda lista de una vez: el nombre viene de Google (o se deriva
+    // del correo si Google no lo envía) y la contraseña se deja vacía (null),
+    // ya que el acceso es por Google. No se pide completar perfil.
     const newUser = await this.usersService.create({
       email,
-      firstName,
+      firstName: firstName?.trim() || email.split('@')[0],
       lastName,
-      isProfileComplete: false,
+      isProfileComplete: true,
     });
 
     const { password: _, ...userWithoutPass } = newUser;

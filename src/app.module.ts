@@ -27,6 +27,7 @@ import { BinanceModule } from './binance/binance.module';
 import { ChatIaModule } from './chat-ia/chat-ia.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { SocialNetworkModule } from './socialNetwork/socialNetwork.module';
+import { CategoriesModule } from './categories/categories.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { SocialNetworkModule } from './socialNetwork/socialNetwork.module';
     ChatIaModule,
     ReferralsModule,
     SocialNetworkModule,
+    CategoriesModule,
   ],
   controllers: [],
   providers: [],
